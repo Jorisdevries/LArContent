@@ -99,6 +99,15 @@ else()
     find_package(Eigen3 3.3 REQUIRED NO_MODULE)
     include_directories(SYSTEM ${EIGEN3_INCLUDE_DIRS})
 
+    find_package(ROOT 5.26.00 REQUIRED COMPONENTS Eve Geom RGL EG Minuit)
+    include_directories(${ROOT_INCLUDE_DIRS})
+    link_libraries(${ROOT_LIBRARIES} ${ROOT_COMPONENT_LIBRARIES})
+    add_definitions(${ROOT_DEFINITIONS})
+
+    set(GSL_ROOT_DIR "/usr/")
+    find_package(GSL REQUIRED)
+    link_libraries(GSL::gsl GSL::gslcblas)
+
     #-------------------------------------------------------------------------------------------------------------------------------------------
     # Low level settings - compiler etc
     set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -pedantic -Wno-long-long -Wno-sign-compare -Wshadow -fno-strict-aliasing -std=c++11 ${CMAKE_CXX_FLAGS}")
