@@ -104,10 +104,6 @@ else()
     link_libraries(${ROOT_LIBRARIES} ${ROOT_COMPONENT_LIBRARIES})
     add_definitions(${ROOT_DEFINITIONS})
 
-    set(GSL_ROOT_DIR "/usr/")
-    find_package(GSL REQUIRED)
-    link_libraries(GSL::gsl GSL::gslcblas)
-
     #-------------------------------------------------------------------------------------------------------------------------------------------
     # Low level settings - compiler etc
     set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -pedantic -Wno-long-long -Wno-sign-compare -Wshadow -fno-strict-aliasing -std=c++11 ${CMAKE_CXX_FLAGS}")
