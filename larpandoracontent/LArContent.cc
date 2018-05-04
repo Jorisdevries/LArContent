@@ -12,6 +12,8 @@
 #include "Pandora/AlgorithmTool.h"
 #include "Pandora/Pandora.h"
 
+#include "larpandoracontent/LArDirection/TrackDirectionTool.h"
+
 #include "larpandoracontent/LArCheating/CheatingBeamParticleIdTool.h"
 #include "larpandoracontent/LArCheating/CheatingClusterCharacterisationAlgorithm.h"
 #include "larpandoracontent/LArCheating/CheatingClusterCreationAlgorithm.h"
@@ -264,6 +266,7 @@
 
 #define LAR_ALGORITHM_TOOL_LIST(d)                                                                                              \
     d("LArBdtBeamParticleId",                   BdtBeamParticleIdTool)                                                          \
+    d("LArTrackDirectionTool",                  TrackDirectionTool)                                                             \
     d("LArBeamParticleId",                      BeamParticleIdTool)                                                             \
     d("LArCosmicRayTagging",                    CosmicRayTaggingTool)                                                           \
     d("LArNeutrinoId",                          NeutrinoIdTool)                                                                 \
