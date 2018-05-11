@@ -68,14 +68,6 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
 {
     try
     {
-        /*
-        if (LArClusterHelper::GetClusterHitType(pTargetClusterW) != TPC_VIEW_W)
-        {
-            std::cout << "ERROR: cluster is not in the W view!" << std::endl;
-            throw StatusCodeException(STATUS_CODE_FAILURE);
-        }
-        */
-
         if (globalMuonLookupTable.GetMap().empty())
             this->SetLookupTable();
 
@@ -109,12 +101,6 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetPfoDirection(const
         LArPfoHelper::GetSlidingFitTrajectory(pPfo, pVertex, m_slidingFitWindow, slidingFitPitch, trackStateVector);
 
         const Cluster *const pClusterW = GetTargetClusterFromPFO(pPfo, trackStateVector);
-
-        if (pClusterW->GetNCaloHits() <= m_minClusterCaloHits)
-        {
-            std::cout << "ERROR: PFO is tiny!" << std::endl;
-            throw StatusCodeException(STATUS_CODE_NOT_FOUND);
-        }
 
         DirectionFitObject finalDirectionFitObject = GetClusterDirection(pClusterW);
         this->ComputeProbability(finalDirectionFitObject);
@@ -200,14 +186,6 @@ const Cluster* TrackDirectionTool::GetTargetClusterFromPFO(const ParticleFlowObj
     //HitType hitType(TPC_VIEW_W);
     ClusterList clusterListW;
     LArPfoHelper::GetTwoDClusterList(pPfo, clusterListW);
-
-    /*
-    if (clusterListW.size() == 0)
-    {
-        std::cout << "ERROR: no W clusters could be extracted from the PFO!" << std::endl;
-        throw StatusCodeException(STATUS_CODE_NOT_FOUND);
-    }
-    */
 
     TrackState firstTrackState(*(trackStateVector.begin())), lastTrackState(trackStateVector.back());
     const pandora::CartesianVector initialPosition(firstTrackState.GetPosition());
@@ -1640,12 +1618,6 @@ void TrackDirectionTool::GetCalorimetricDirection(const Cluster* pTargetClusterW
     this->SimpleTrackEndFilter(filteredHitChargeVector);
     this->TrackEndFilter(filteredHitChargeVector, directionFitObject);
 
-    if (pTargetClusterW->GetNCaloHits() < 1.5 * m_minClusterCaloHits || LArClusterHelper::GetLength(pTargetClusterW) < m_minClusterLength)
-    {
-        std::cout << "Cluster too small" << std::endl;
-        throw StatusCodeException(STATUS_CODE_FAILURE);
-    }
-
     this->FitHitChargeVector(filteredHitChargeVector, directionFitObject);
 
     this->TestHypothesisOne(directionFitObject);
@@ -1741,9 +1713,6 @@ void TrackDirectionTool::AddToSlidingFitCache(const Cluster *const pCluster)
 
     const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
     const TwoDSlidingFitResult slidingFit(pCluster, m_slidingFitWindow, slidingFitPitch);
-
-    //std::cout << slidingFit.GetGlobalMinLayerPosition().GetZ() << std::endl;
-    //std::cout << slidingFit.GetGlobalMaxLayerPosition().GetZ() << std::endl;
 
     if (!m_slidingFitResultMap.insert(TwoDSlidingFitResultMap::value_type(pCluster, slidingFit)).second)
     {

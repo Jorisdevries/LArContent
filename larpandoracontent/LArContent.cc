@@ -13,6 +13,7 @@
 #include "Pandora/Pandora.h"
 
 #include "larpandoracontent/LArDirection/TrackDirectionTool.h"
+#include "larpandoracontent/LArDirection/DirectionClusterSplitting.h"
 
 #include "larpandoracontent/LArCheating/CheatingBeamParticleIdTool.h"
 #include "larpandoracontent/LArCheating/CheatingClusterCharacterisationAlgorithm.h"
@@ -178,6 +179,7 @@
 #include "larpandoracontent/LArContent.h"
 
 #define LAR_ALGORITHM_LIST(d)                                                                                                   \
+    d("LArDirectionClusterSplitting",           DirectionClusterSplitting)                                                      \
     d("LArEventValidation",                     EventValidationAlgorithm)                                                       \
     d("LArPfoValidation",                       PfoValidationAlgorithm)                                                         \
     d("LArMCParticleMonitoring",                MCParticleMonitoringAlgorithm)                                                  \
