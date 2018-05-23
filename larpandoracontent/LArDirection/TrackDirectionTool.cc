@@ -1462,15 +1462,16 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     //---------------------------------------------------------------------------------------------------
     //Forwards Fit
 
-    double particleMass(105.7), maxScale(globalMuonLookupTable.GetMaxRange()/globalTrackLength);
+    //double particleMass(105.7);
+    double maxScale(globalMuonLookupTable.GetMaxRange()/globalTrackLength);
     LookupTable lookupTable = globalMuonLookupTable;
 
-    const int nParameters = 3;
-    const std::string parName[nParameters]   = {"ENDENERGY", "SCALE", "EXTRA"};
-    const double vstart[nParameters] = {2.1, 1.0, 1.0};
-    const double step[nParameters] = {1.e-1, 1.e-1, 1.e-1};
-    const double lowphysbound[nParameters] = {2.0, 0.01, 0.1};
-    const double highphysbound[nParameters] = {1.0e3, maxScale, 1.0e1};
+    const int nParameters = 4;
+    const std::string parName[nParameters]   = {"ENDENERGY", "SCALE", "MASS", "EXTRA"};
+    const double vstart[nParameters] = {2.1, 1.0, 1.0, 1.0};
+    const double step[nParameters] = {1.e-1, 1.e-1, 1.e-1, 1.e-1};
+    const double lowphysbound[nParameters] = {2.0, 0.01, 105.0, 0.1};
+    const double highphysbound[nParameters] = {1.0e3, maxScale, 1.0e3, 1.0e1};
 
     int ierflg(0);
 
@@ -1496,12 +1497,12 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     //---------------------------------------------------------------------------------
     //Backwards Fit
 
-    const int nParameters2 = 3;
-    const std::string parName2[nParameters2]   = {"ENDENERGY", "SCALE", "EXTRA"};
-    const double vstart2[nParameters2] = {2.1, 1.0, 1.0};
-    const double step2[nParameters2] = {1.e-1, 1.e-1, 1.e-1};
-    const double lowphysbound2[nParameters2] = {2.0, 0.01, 0.1};
-    const double highphysbound2[nParameters2] = {1.0e3, maxScale, 1.0e1};
+    const int nParameters2 = 4;
+    const std::string parName2[nParameters2]   = {"ENDENERGY", "SCALE", "MASS", "EXTRA"};
+    const double vstart2[nParameters2] = {2.1, 1.0, 1.0, 1.0};
+    const double step2[nParameters2] = {1.e-1, 1.e-1, 1.e-1, 1.e-1};
+    const double lowphysbound2[nParameters2] = {2.0, 0.01, 105.0, 0.1};
+    const double highphysbound2[nParameters2] = {1.0e3, maxScale, 1.0e3, 1.0e1};
 
     int ierflg2(0);
 
@@ -1548,17 +1549,18 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
 
     //--------------------------------------------------------------------------
     
+    //Here we set the individual HitCharge attributes
     int nHitsConsidered(0);
 
     for (HitCharge &hitCharge : hitChargeVector)
     {
         double f_L_i = f_Ls + (outpar[1] * hitCharge.GetLongitudinalPosition());
         double f_E_i = GetEnergyfromLength(lookupTable, f_L_i);
-        double f_dEdx_2D = outpar[2] * (f_beta/f_alpha) * BetheBloch(f_E_i, particleMass);
+        double f_dEdx_2D = outpar[3] * (f_beta/f_alpha) * BetheBloch(f_E_i, outpar[2]);
 
         double b_L_i = b_Ls + (outpar2[1] * (globalTrackLength - hitCharge.GetLongitudinalPosition()));
         double b_E_i = GetEnergyfromLength(lookupTable, b_L_i);
-        double b_dEdx_2D = outpar2[2] * (b_beta/b_alpha) * BetheBloch(b_E_i, particleMass);
+        double b_dEdx_2D = outpar2[3] * (b_beta/b_alpha) * BetheBloch(b_E_i, outpar2[2]);
 
         double Q_fit_f(f_dEdx_2D * hitCharge.GetHitWidth());
         double Q_fit_b(b_dEdx_2D * hitCharge.GetHitWidth());

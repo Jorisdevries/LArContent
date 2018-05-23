@@ -17,6 +17,8 @@
 
 #include "larpandoracontent/LArVertex/VertexSelectionBaseAlgorithm.h"
 
+#include "larpandoracontent/LArDirection/TrackDirectionTool.h"
+
 #include <random>
 
 namespace lar_content
@@ -33,6 +35,60 @@ template<typename, unsigned int> class KDTreeNodeInfoT;
 class SvmVertexSelectionAlgorithm : public VertexSelectionBaseAlgorithm
 {
 public:
+    /**
+     *  @brief Emerging cluster info class
+     */
+    class EmergingCluster
+    {
+    public:
+        /**
+         *  @brief  Constructor
+         *
+         *  @param  beamDeweighting the beam deweighting feature
+         *  @param  rPhiFeature the r/phi feature
+         */
+        EmergingCluster(const pandora::CartesianVector originPosition, EmergingCluster* pEmergingCluster, bool hasParent, const pandora::CartesianVector directionBeginpoint, const pandora::CartesianVector directionEndpoint, float directionProbability);
+
+        /**
+         *  @brief  Constructor
+         */
+        EmergingCluster* ParentEmergingCluster() const;
+
+        /**
+         *  @brief  Constructor
+         */
+        bool HasParent();
+
+        /**
+         *  @brief  Constructor
+         */
+        const pandora::CartesianVector* Origin() const;
+
+        /**
+         *  @brief  Constructor
+         */
+        const pandora::CartesianVector* DirectionBeginpoint() const;
+
+        /**
+         *  @brief  Constructor
+         */
+        const pandora::CartesianVector* DirectionEndpoint() const;
+
+        /**
+         *  @brief  Constructor
+         */
+        float DirectionProbability();
+
+        const pandora::CartesianVector*             m_origin;           ///< The point of origin.
+        EmergingCluster*                            m_parent;           ///< The parent EmergingCluster 
+        bool                                        m_hasparent;        ///< Whether a parent exists
+        const pandora::CartesianVector*             m_directionbeginpoint;           ///< The point of origin.
+        const pandora::CartesianVector*             m_directionendpoint;           ///< The point of origin.
+        float                                       m_directionprobability;
+    };
+
+    typedef std::vector<EmergingCluster*> EmergingClusterVector;
+
     /**
      *  @brief Vertex feature info class
      */
@@ -366,6 +422,21 @@ private:
         const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi) const;
 
     /**
+     *  @brief  Used a binary classifier to compare a set of vertices and pick the best one
+     *
+     *  @param  vertexVector the vector of vertices
+     *  @param  clusterList the W cluster list 
+     *  @param  vertexFeatureInfoMap the vertex feature info map
+     *  @param  eventFeatureList the event feature list
+     *  @param  supportVectorMachine the support vector machine classifier
+     *  @param  useRPhi whether to include the r/phi feature
+     *
+     *  @return address of the best vertex
+     */
+    const pandora::Vertex * ScoreVertices(const pandora::VertexVector &vertexVector, pandora::ClusterList &clusterList, const VertexFeatureInfoMap &vertexFeatureInfoMap,
+        const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi) const;
+
+    /**
      *  @brief  Populate the final vertex score list using the r/phi score to find the best vertex in the vicinity
      *
      *  @param  vertexFeatureInfoMap the vertex feature info map
@@ -411,6 +482,42 @@ private:
     float                 m_maxTrueVertexRadius;                  ///< The maximum distance at which a vertex candidate can be considered the 'true' vertex
     bool                  m_useRPhiFeatureForRegion;              ///< Whether to use the r/phi feature for the region vertex
     bool                  m_dropFailedRPhiFastScoreCandidates;    ///< Whether to drop candidates that fail the r/phi fast score test
+
+    //------------------------------------------------------------------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------------------------------------------------------------------
+
+    typedef std::unordered_map<const pandora::Cluster*, pandora::CartesianPointVector> ClusterToSpacepointsMap; 
+    typedef std::map<const pandora::Cluster*, TrackDirectionTool::DirectionFitObject> DirectionFitMap;
+
+    float GetDirectionFlowProbability(const pandora::CartesianVector &vertexPosition, pandora::ClusterList &inputClusterVector) const;
+
+    void SelectClusters(pandora::ClusterList &clusterList, pandora::ClusterVector &selectedClusterVector) const;
+
+    pandora::ClusterVector GetPrimaryClusters(const pandora::CartesianVector &positionVector, const pandora::ClusterVector &inputClusterVector) const;
+
+    pandora::ClusterVector GetOrderedDaughters(const pandora::CartesianVector &positionVector, const pandora::Cluster* const pParentCluster, const pandora::ClusterVector &inputClusterVector, pandora::ClusterVector &primaryClusters) const;
+
+    bool ClusterPointsToPosition(const pandora::Cluster *const pCluster, const pandora::CartesianVector &positionVector, ClusterToSpacepointsMap &clusterToSpacepointsMap) const;
+
+    ClusterToSpacepointsMap FillClusterToSpacepointsMap(const pandora::ClusterVector &clusterVector) const;
+
+    void GetSpacepoints(const pandora::Cluster *const pCluster, pandora::CartesianPointVector &spacePoints) const;
+
+    void AddToSlidingFitCache(const pandora::Cluster *const pCluster) const;
+
+    const TwoDSlidingFitResult &GetCachedSlidingFit(const pandora::Cluster *const pCluster) const;
+
+    TrackDirectionTool::DirectionFitObject GetCachedDirectionFit(const pandora::Cluster *const pCluster) const;
+
+    mutable TwoDSlidingFitResultMap m_slidingFitResultMap;              ///< The sliding fit result map
+    mutable DirectionFitMap         m_directionFitMap;                  ///< The direction fit map
+    float                   m_impactRadius;                     ///< The impact radius determining whether a sliding fit extrapolation points to a position 
+    unsigned int            m_extrapolationNSteps;              ///< The number of steps used in the sliding fit extrapolation method
+    float                   m_extrapolationStepSize;            ///< The extrapolation step size.
+    float                   m_minimumClusterLength;             ///< The minimum length a cluster must be in order to be considered 
+    TrackDirectionTool      *m_pTrackDirectionTool;             ///< The track direction tool 
+
+    bool                  m_enableDirection;
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -439,6 +546,48 @@ inline SvmVertexSelectionAlgorithm::EventFeatureInfo::EventFeatureInfo(const flo
     m_nCandidates(nCandidates)
 {
 }
+
+inline SvmVertexSelectionAlgorithm::EmergingCluster* SvmVertexSelectionAlgorithm::EmergingCluster::ParentEmergingCluster() const
+{
+    return m_parent;
+} 
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline bool SvmVertexSelectionAlgorithm::EmergingCluster::HasParent() 
+{
+    return m_hasparent;
+} 
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline const pandora::CartesianVector* SvmVertexSelectionAlgorithm::EmergingCluster::Origin() const
+{
+    return m_origin;
+} 
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline const pandora::CartesianVector* SvmVertexSelectionAlgorithm::EmergingCluster::DirectionBeginpoint() const
+{
+    return m_directionbeginpoint;
+} 
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline const pandora::CartesianVector* SvmVertexSelectionAlgorithm::EmergingCluster::DirectionEndpoint() const
+{
+    return m_directionendpoint;
+} 
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float SvmVertexSelectionAlgorithm::EmergingCluster::DirectionProbability() 
+{
+    return m_directionprobability;
+} 
+
+//------------------------------------------------------------------------------------------------------------------------------------------
 
 } // namespace lar_content
 

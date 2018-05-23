@@ -48,11 +48,16 @@ SvmVertexSelectionAlgorithm::SvmVertexSelectionAlgorithm() :
     m_showerClusteringDistance(3.f),
     m_minShowerClusterHits(1),
     m_useShowerClusteringApproximation(false),
-    m_regionRadius(10.f),
+    m_regionRadius(5.f),
     m_rPhiFineTuningRadius(2.f),
     m_maxTrueVertexRadius(1.f),
     m_useRPhiFeatureForRegion(false),
-    m_dropFailedRPhiFastScoreCandidates(true)
+    m_dropFailedRPhiFastScoreCandidates(true),
+    m_impactRadius(2.f),
+    m_extrapolationNSteps(200),
+    m_extrapolationStepSize(0.1f),
+    m_minimumClusterLength(5.f),
+    m_enableDirection(true)
 {
 }
 
@@ -112,14 +117,50 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
     VertexVector bestRegionVertices;
     this->GetBestRegionVertices(initialScoreList, bestRegionVertices);
 
+    //DRAW
+    /*
+    for (const auto pTestVertex : vertexVector)
+    {
+        const pandora::CartesianVector vertexPosition(pTestVertex->GetPosition());
+        const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), vertexPosition, TPC_VIEW_W));
+        PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "PrimaryVertexProjection", RED, 1));
+    }
+    */
+
+    //TEST
+    /*
+    for (const auto pTestVertex : vertexVector)
+    {
+        ClusterList clusterListToDraw;
+        VertexList  vertexListToDraw;
+        vertexListToDraw.push_back(pTestVertex);
+
+        for (const auto pPrimaryCluster : clustersW)
+            clusterListToDraw.push_back(pPrimaryCluster);
+
+        const pandora::CartesianVector vertexPosition(pTestVertex->GetPosition());
+        const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), vertexPosition, TPC_VIEW_W));
+
+        float directionFlowProbability(this->GetDirectionFlowProbability(vertexPosition, clustersW));
+        (void) directionFlowProbability;
+    }
+    */
+    //TEST
+
     if (m_trainingSetMode)
         this->ProduceTrainingSets(vertexVector, bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, kdTreeMap);
 
     if ((!m_trainingSetMode || m_allowClassifyDuringTraining) && !bestRegionVertices.empty())
     {
         // Use svm to choose the region.
-        const Vertex *const pBestRegionVertex(this->CompareVertices(bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
-            m_useRPhiFeatureForRegion));
+        const Vertex* pBestRegionVertex;
+
+        if (m_enableDirection)
+            pBestRegionVertex = this->ScoreVertices(bestRegionVertices, clustersW, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
+            m_useRPhiFeatureForRegion);
+        else
+            pBestRegionVertex = this->CompareVertices(bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
+            m_useRPhiFeatureForRegion);
 
         // Get all the vertices in the best region.
         VertexVector regionalVertices{pBestRegionVertex};
@@ -729,6 +770,45 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::CompareVertices(const Verte
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVertices(const VertexVector &vertexVector, ClusterList &clusterList, const VertexFeatureInfoMap &vertexFeatureInfoMap,
+    const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi) const 
+{
+    const Vertex *pBestVertex(vertexVector.front());
+    LArMvaHelper::MvaFeatureVector chosenFeatureList;
+
+    VertexFeatureInfo chosenVertexFeatureInfo(vertexFeatureInfoMap.at(pBestVertex));
+    this->AddVertexFeaturesToVector(chosenVertexFeatureInfo, chosenFeatureList, useRPhi);
+
+    float bestScore(0.f);
+
+    for (const Vertex *const pVertex : vertexVector)
+    {
+        if (pVertex == pBestVertex)
+            continue;
+
+        LArMvaHelper::MvaFeatureVector featureList;
+        VertexFeatureInfo vertexFeatureInfo(vertexFeatureInfoMap.at(pVertex));
+        this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi);
+
+        float vertexScore(LArMvaHelper::CalculateClassificationScore(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
+        std::cout << "SVM probability: " << vertexScore << std::endl;
+
+        pandora::CartesianVector vertexPosition(pVertex->GetPosition());
+        vertexScore *= GetDirectionFlowProbability(vertexPosition, clusterList); 
+
+        if (vertexScore > bestScore)
+        {
+            bestScore = vertexScore;
+            pBestVertex = pVertex;
+            chosenFeatureList = featureList;
+        }
+    }
+
+    return pBestVertex;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 void SvmVertexSelectionAlgorithm::PopulateFinalVertexScoreList(const VertexFeatureInfoMap &vertexFeatureInfoMap, const Vertex *const pFavouriteVertex,
     const VertexVector &vertexVector, VertexScoreList &finalVertexScoreList) const
 {
@@ -745,6 +825,318 @@ void SvmVertexSelectionAlgorithm::PopulateFinalVertexScoreList(const VertexFeatu
             }
         }
     }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float SvmVertexSelectionAlgorithm::GetDirectionFlowProbability(const pandora::CartesianVector &vertexPosition, pandora::ClusterList &inputClusterList) const 
+{
+    //Always interested only in W projection of vertex position
+    const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), vertexPosition, TPC_VIEW_W));
+
+    //Creates sliding fits and direction fits
+    pandora::ClusterVector inputClusterVector;
+    this->SelectClusters(inputClusterList, inputClusterVector);
+
+    float accumulatedProbability(1.f);
+    pandora::ClusterVector primaryClusters(this->GetPrimaryClusters(vertexProjection, inputClusterVector));
+
+    //DRAW
+    pandora::ClusterList allClusterListToDraw(inputClusterVector.begin(), inputClusterVector.end());
+    pandora::ClusterList primaryClusterListToDraw(primaryClusters.begin(), primaryClusters.end());
+    pandora::ClusterList daughterClusterListToDraw;
+
+    if (primaryClusters.size() == 0)
+        return 0.5;
+
+    for (const auto pPrimaryCluster : primaryClusters)
+    {
+        //TrackDirectionTool::DirectionFitObject pDirectionFit(); 
+        TrackDirectionTool::DirectionFitObject fitResult(this->GetCachedDirectionFit(pPrimaryCluster));
+
+        if ((vertexProjection - fitResult.GetBeginpoint()).GetMagnitude() < (vertexProjection - fitResult.GetEndpoint()).GetMagnitude())
+        {
+            float fractionalCloseness(1.0 - ((fitResult.GetBeginpoint() - vertexProjection).GetMagnitude())/((fitResult.GetBeginpoint() - fitResult.GetEndpoint()).GetMagnitude()));
+            accumulatedProbability *= fractionalCloseness * fitResult.GetProbability();
+            std::cout << "Primary direction flow contribution: " << fitResult.GetProbability() << std::endl;
+            std::cout << "Primary fractional closeness: " << fractionalCloseness << std::endl;
+        }
+        else
+        {
+            float fractionalCloseness(1.0 - ((fitResult.GetEndpoint() - vertexProjection).GetMagnitude())/((fitResult.GetBeginpoint() - fitResult.GetEndpoint()).GetMagnitude()));
+            accumulatedProbability *= fractionalCloseness * (1.0 - fitResult.GetProbability());
+            std::cout << "Primary direction flow contribution: " << 1.0 - fitResult.GetProbability() << std::endl;
+            std::cout << "Primary fractional closeness: " << fractionalCloseness << std::endl;
+        }
+
+        pandora::ClusterVector daughterClusters(this->GetOrderedDaughters(vertexProjection, pPrimaryCluster, inputClusterVector, primaryClusters));
+
+        TwoDSlidingFitResult parentSlidingFit(this->GetCachedSlidingFit(pPrimaryCluster));
+        pandora::CartesianVector parentOrigin(vertexProjection);
+
+        for (const auto pDaughterCluster : daughterClusters)
+        {
+            daughterClusterListToDraw.push_back(pDaughterCluster);
+
+            pandora::CartesianVector currentOrigin((parentSlidingFit.GetGlobalMinLayerPosition() - parentOrigin).GetMagnitude() > (parentSlidingFit.GetGlobalMaxLayerPosition() - parentOrigin).GetMagnitude() ? parentSlidingFit.GetGlobalMinLayerPosition() : parentSlidingFit.GetGlobalMaxLayerPosition()); //whichever sliding fit endpoint is furthest away from the previous origin
+
+            TrackDirectionTool::DirectionFitObject daughterFitResult(this->GetCachedDirectionFit(pDaughterCluster));
+
+            //DRAW
+            //daughterFitResult.DrawFit();
+
+            if ((currentOrigin - daughterFitResult.GetBeginpoint()).GetMagnitude() < (currentOrigin - daughterFitResult.GetEndpoint()).GetMagnitude())
+            {
+                float fractionalCloseness(1.0 - ((daughterFitResult.GetBeginpoint() - currentOrigin).GetMagnitude())/((daughterFitResult.GetBeginpoint() - daughterFitResult.GetEndpoint()).GetMagnitude()));
+                accumulatedProbability *= fractionalCloseness * daughterFitResult.GetProbability();
+                std::cout << "Daughter direction flow contribution: " << daughterFitResult.GetProbability() << std::endl;
+                std::cout << "Daughter fractional closeness: " << fractionalCloseness << std::endl;
+            }
+            else
+            {
+                float fractionalCloseness(1.0 - ((daughterFitResult.GetEndpoint() - currentOrigin).GetMagnitude())/((daughterFitResult.GetBeginpoint() - daughterFitResult.GetEndpoint()).GetMagnitude()));
+                accumulatedProbability *= fractionalCloseness * (1.0 - daughterFitResult.GetProbability());
+                std::cout << "Daughter direction flow contribution: " << 1.0 - daughterFitResult.GetProbability() << std::endl;
+                std::cout << "Daughter fractional closeness: " << fractionalCloseness << std::endl;
+            }
+
+            parentOrigin = currentOrigin;
+            parentSlidingFit = this->GetCachedSlidingFit(pDaughterCluster);
+        }
+    }
+
+    //DRAW
+    /*
+    PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "PrimaryVertexProjection", RED, 1));
+    PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &allClusterListToDraw, "SelectedClusters", BLACK));
+    PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &primaryClusterListToDraw, "PrimaryClusters", BLUE));
+    PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &daughterClusterListToDraw, "DaughterClusters", GREEN));
+    PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
+    */
+
+    std::cout << "Direction flow probability: " << accumulatedProbability << std::endl;
+
+    return accumulatedProbability;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void SvmVertexSelectionAlgorithm::SelectClusters(pandora::ClusterList &clusterList, pandora::ClusterVector &selectedClusterVector) const 
+{
+    ClusterVector sortedClusters(clusterList.begin(), clusterList.end());
+    std::sort(sortedClusters.begin(), sortedClusters.end(), LArClusterHelper::SortByNHits);
+
+    for (const Cluster *const pCluster : sortedClusters)
+    {   
+        if (LArClusterHelper::GetLength(pCluster) < m_minimumClusterLength)
+            continue;
+
+        try 
+        {   
+            this->AddToSlidingFitCache(pCluster);
+            selectedClusterVector.push_back(pCluster);
+        }   
+        catch (StatusCodeException &statusCodeException)
+        {   
+            std::cout << "Failure to cache." << std::endl;
+            continue;
+            //if (STATUS_CODE_FAILURE == statusCodeException.GetStatusCode())
+            //    throw statusCodeException;
+        }  
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::ClusterVector SvmVertexSelectionAlgorithm::GetPrimaryClusters(const pandora::CartesianVector &positionVector, const pandora::ClusterVector &inputClusterVector) const
+{
+    ClusterToSpacepointsMap clusterToSpacepointsMap(this->FillClusterToSpacepointsMap(inputClusterVector));
+    ClusterVector primaryClusterVector;
+
+    for (const auto pCluster : inputClusterVector)
+    {
+        if (this->ClusterPointsToPosition(pCluster, positionVector, clusterToSpacepointsMap))
+        {
+            //Don't consider clusters that happen to point to vertex but are far away 
+            if ((this->GetCachedDirectionFit(pCluster).GetBeginpoint() - positionVector).GetMagnitude() <= 5 * m_impactRadius
+            || (this->GetCachedDirectionFit(pCluster).GetEndpoint() - positionVector).GetMagnitude() <= 5 * m_impactRadius)
+                primaryClusterVector.push_back(pCluster);
+        }
+    }
+
+    return primaryClusterVector;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::ClusterVector SvmVertexSelectionAlgorithm::GetOrderedDaughters(const pandora::CartesianVector &positionVector, const pandora::Cluster* const pPrimaryCluster, const pandora::ClusterVector &inputClusterVector, pandora::ClusterVector &primaryClusters) const
+{
+    ClusterToSpacepointsMap clusterToSpacepointsMap(this->FillClusterToSpacepointsMap(inputClusterVector));
+
+    const pandora::Cluster* pCurrentCluster(pPrimaryCluster);
+    TwoDSlidingFitResult currentSlidingFit(this->GetCachedSlidingFit(pCurrentCluster));
+    pandora::CartesianVector currentOrigin((currentSlidingFit.GetGlobalMinLayerPosition() - positionVector).GetMagnitude() > (currentSlidingFit.GetGlobalMaxLayerPosition() - positionVector).GetMagnitude() ? currentSlidingFit.GetGlobalMinLayerPosition() : currentSlidingFit.GetGlobalMaxLayerPosition()); //whichever sliding fit endpoint is furthest away from the previous origin
+
+    pandora::ClusterVector orderedClusterVector;
+    bool daughterFound(true);
+
+    pandora::ClusterVector checkedClusters;
+    checkedClusters.push_back(pPrimaryCluster);
+
+    while (daughterFound)
+    {
+        daughterFound = false;
+
+        for (const auto pCluster : inputClusterVector)
+        {
+            if (this->ClusterPointsToPosition(pCluster, currentOrigin, clusterToSpacepointsMap) && std::find(checkedClusters.begin(), checkedClusters.end(), pCluster) == checkedClusters.end())
+            {
+                //If daughter alredy considered or if cluster in primaries vector, disregard
+                if (std::find(checkedClusters.begin(), checkedClusters.end(), pCluster) != checkedClusters.end()
+                || std::find(primaryClusters.begin(), primaryClusters.end(), pCluster) != primaryClusters.end())
+                    continue;
+
+                pCurrentCluster = pCluster;
+                currentSlidingFit = this->GetCachedSlidingFit(pCluster);
+                currentOrigin = ((currentSlidingFit.GetGlobalMinLayerPosition() - currentOrigin).GetMagnitude() > (currentSlidingFit.GetGlobalMaxLayerPosition() - currentOrigin).GetMagnitude() ? currentSlidingFit.GetGlobalMinLayerPosition() : currentSlidingFit.GetGlobalMaxLayerPosition()); //whichever sliding fit endpoint is furthest away from the previous origin
+
+                orderedClusterVector.push_back(pCluster);       
+                checkedClusters.push_back(pCluster);
+
+                daughterFound = true;
+                break;
+            }
+        }
+    }
+
+    return orderedClusterVector;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+bool SvmVertexSelectionAlgorithm::ClusterPointsToPosition(const Cluster *const pCluster, const pandora::CartesianVector &positionVector, ClusterToSpacepointsMap &clusterToSpacepointsMap) const
+{
+    const auto clusterSpacePoints(clusterToSpacepointsMap.at(pCluster));
+
+    for (const auto position : clusterSpacePoints)
+    {
+        if ((position - positionVector).GetMagnitude() <= m_impactRadius)
+            return true;
+    }
+
+    return false;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+SvmVertexSelectionAlgorithm::ClusterToSpacepointsMap SvmVertexSelectionAlgorithm::FillClusterToSpacepointsMap(const ClusterVector &clusterVector) const
+{   
+    ClusterToSpacepointsMap clusterToSpacepointsMap;
+    
+    for (const Cluster *const pCluster : clusterVector)
+    {   
+        ClusterToSpacepointsMap::iterator mapIter(clusterToSpacepointsMap.emplace(pCluster, CartesianPointVector()).first);
+        this->GetSpacepoints(pCluster, mapIter->second);
+    }
+
+    return clusterToSpacepointsMap;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void SvmVertexSelectionAlgorithm::GetSpacepoints(const Cluster *const pCluster, CartesianPointVector &spacepoints) const
+{   
+    LArClusterHelper::GetCoordinateVector(pCluster, spacepoints);
+    
+    const TwoDSlidingFitResult &fitResult(this->GetCachedSlidingFit(pCluster));
+    const float minLayerRL(fitResult.GetL(fitResult.GetMinLayer()));
+    const float maxLayerRL(fitResult.GetL(fitResult.GetMaxLayer()));
+    
+    for (unsigned int iStep = 0; iStep < m_extrapolationNSteps; ++ iStep)
+    {   
+        const float deltaRL(static_cast<float>(iStep) * m_extrapolationStepSize);
+        
+        CartesianVector positionPositive(0.f, 0.f, 0.f), positionNegative(0.f, 0.f, 0.f);
+        fitResult.GetExtrapolatedPosition(maxLayerRL + deltaRL, positionPositive);
+        fitResult.GetExtrapolatedPosition(minLayerRL - deltaRL, positionNegative);
+        
+        spacepoints.push_back(positionPositive);
+        spacepoints.push_back(positionNegative);
+    }
+    
+    std::sort(spacepoints.begin(), spacepoints.end(), LArClusterHelper::SortCoordinatesByPosition);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void SvmVertexSelectionAlgorithm::AddToSlidingFitCache(const Cluster *const pCluster) const
+{
+    if (m_slidingFitResultMap.find(pCluster) != m_slidingFitResultMap.end())
+        return;
+
+    const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
+    const TwoDSlidingFitResult slidingFit(pCluster, m_slidingFitWindow, slidingFitPitch);
+
+    if (!m_slidingFitResultMap.insert(TwoDSlidingFitResultMap::value_type(pCluster, slidingFit)).second)
+    {    
+        std::cout << "Sliding fit failure" << std::endl;
+        throw StatusCodeException(STATUS_CODE_FAILURE);
+    }
+
+    try
+    {
+        TrackDirectionTool::DirectionFitObject directionFit(m_pTrackDirectionTool->GetClusterDirection(pCluster));
+        m_directionFitMap.insert(std::make_pair(pCluster, directionFit));
+    } 
+    catch (...)
+    {
+        std::cout << "Direction fit failure" << std::endl;
+        throw StatusCodeException(STATUS_CODE_FAILURE);
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+const TwoDSlidingFitResult &SvmVertexSelectionAlgorithm::GetCachedSlidingFit(const Cluster *const pCluster) const
+{
+    TwoDSlidingFitResultMap::const_iterator iter = m_slidingFitResultMap.find(pCluster);
+
+    if (m_slidingFitResultMap.end() == iter)
+    {    
+        std::cout << "Sliding fit retrieval failure" << std::endl;
+        throw StatusCodeException(STATUS_CODE_NOT_FOUND);
+    }    
+
+    return iter->second;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+TrackDirectionTool::DirectionFitObject SvmVertexSelectionAlgorithm::GetCachedDirectionFit(const Cluster *const pCluster) const 
+{
+    const auto iter = m_directionFitMap.find(pCluster);
+
+    if (m_directionFitMap.end() == iter)
+    {    
+        std::cout << "Direction fit retrieval failure" << std::endl;
+        throw StatusCodeException(STATUS_CODE_NOT_FOUND);
+    }    
+
+    return iter->second;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+SvmVertexSelectionAlgorithm::EmergingCluster::EmergingCluster(const pandora::CartesianVector originPosition, EmergingCluster* pParentEmergingCluster, bool hasParent, const pandora::CartesianVector directionBeginpoint, const pandora::CartesianVector directionEndpoint, float directionProbability) :
+m_origin(&originPosition),
+m_parent(pParentEmergingCluster),
+m_hasparent(hasParent),
+m_directionbeginpoint(&directionBeginpoint),
+m_directionendpoint(&directionEndpoint),
+m_directionprobability(directionProbability)
+{
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -869,6 +1261,18 @@ StatusCode SvmVertexSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "DropFailedRPhiFastScoreCandidates", m_dropFailedRPhiFastScoreCandidates));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "EnableDirection", m_enableDirection));
+
+    AlgorithmTool *pAlgorithmTool(nullptr);
+
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ProcessAlgorithmTool(*this, xmlHandle, "TrackDirection", pAlgorithmTool));
+
+    if (!(this->m_pTrackDirectionTool = dynamic_cast<TrackDirectionTool *>(pAlgorithmTool)))
+        throw STATUS_CODE_FAILURE;
+
+    return VertexSelectionBaseAlgorithm::ReadSettings(xmlHandle);
 
     return VertexSelectionBaseAlgorithm::ReadSettings(xmlHandle);
 }

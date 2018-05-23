@@ -51,6 +51,7 @@ private:
 
     unsigned int            m_minClusterCaloHits;               ///< The min number of hits in base cluster selection method
     float                   m_minClusterLengthSquared;          ///< The min length (squared) in base cluster selection method
+    bool                    m_enableDirection;                  ///< Flag for running batch jobs: whether this algorithm should do anything
 
     TrackDirectionTool      *m_pTrackDirectionTool;
 };

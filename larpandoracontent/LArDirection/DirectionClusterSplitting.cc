@@ -23,7 +23,8 @@ namespace lar_content
 
 DirectionClusterSplitting::DirectionClusterSplitting() :
     m_minClusterCaloHits(50),
-    m_minClusterLengthSquared(30.f * 30.f)
+    m_minClusterLengthSquared(30.f * 30.f),
+    m_enableDirection(true)
 {
 }
 
@@ -31,7 +32,10 @@ DirectionClusterSplitting::DirectionClusterSplitting() :
 
 StatusCode DirectionClusterSplitting::Run()
 {
-    this->CountClusters();
+    if (!m_enableDirection)
+        return STATUS_CODE_SUCCESS;
+
+    //this->CountClusters();
 
     try
     {
@@ -46,7 +50,7 @@ StatusCode DirectionClusterSplitting::Run()
             try
             {
                 TrackDirectionTool::DirectionFitObject fitResult = m_pTrackDirectionTool->GetClusterDirection(pCluster);
-                fitResult.DrawFit();
+                //fitResult.DrawFit();
 
                 if (!fitResult.GetSplitObject().GetSplitApplied())
                     continue;
@@ -69,7 +73,7 @@ StatusCode DirectionClusterSplitting::Run()
         throw statusCodeException;
     }
 
-    this->CountClusters();
+    //this->CountClusters();
 
     return STATUS_CODE_SUCCESS;
 }
@@ -311,6 +315,9 @@ StatusCode DirectionClusterSplitting::ReadSettings(const TiXmlHandle xmlHandle)
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "MinClusterLength", minClusterLength));
     m_minClusterLengthSquared = minClusterLength * minClusterLength;
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "EnableDirection", m_enableDirection));
 
     AlgorithmTool *pAlgorithmTool(nullptr);
 
