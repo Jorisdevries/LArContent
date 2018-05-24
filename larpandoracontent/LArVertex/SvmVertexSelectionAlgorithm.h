@@ -484,42 +484,9 @@ private:
     bool                  m_useRPhiFeatureForRegion;              ///< Whether to use the r/phi feature for the region vertex
     bool                  m_dropFailedRPhiFastScoreCandidates;    ///< Whether to drop candidates that fail the r/phi fast score test
 
-    //------------------------------------------------------------------------------------------------------------------------------------------
-    //------------------------------------------------------------------------------------------------------------------------------------------
-
-    typedef std::unordered_map<const pandora::Cluster*, pandora::CartesianPointVector> ClusterToSpacepointsMap; 
-    typedef std::map<const pandora::Cluster*, TrackDirectionTool::DirectionFitObject> DirectionFitMap;
-
-    float GetDirectionFlowProbability(const pandora::CartesianVector &vertexPosition, pandora::ClusterList &inputClusterVector) const;
-
-    void SelectClusters(pandora::ClusterList &clusterList, pandora::ClusterVector &selectedClusterVector) const;
-
-    pandora::ClusterVector GetPrimaryClusters(const pandora::CartesianVector &positionVector, const pandora::ClusterVector &inputClusterVector) const;
-
-    pandora::ClusterVector GetOrderedDaughters(const pandora::CartesianVector &positionVector, const pandora::Cluster* const pParentCluster, const pandora::ClusterVector &inputClusterVector, pandora::ClusterVector &primaryClusters) const;
-
-    bool ClusterPointsToPosition(const pandora::Cluster *const pCluster, const pandora::CartesianVector &positionVector, ClusterToSpacepointsMap &clusterToSpacepointsMap) const;
-
-    ClusterToSpacepointsMap FillClusterToSpacepointsMap(const pandora::ClusterVector &clusterVector) const;
-
-    void GetSpacepoints(const pandora::Cluster *const pCluster, pandora::CartesianPointVector &spacePoints) const;
-
-    void AddToSlidingFitCache(const pandora::Cluster *const pCluster) const;
-
-    const TwoDSlidingFitResult &GetCachedSlidingFit(const pandora::Cluster *const pCluster) const;
-
-    TrackDirectionTool::DirectionFitObject GetCachedDirectionFit(const pandora::Cluster *const pCluster) const;
-
-    mutable TwoDSlidingFitResultMap m_slidingFitResultMap;              ///< The sliding fit result map
-    mutable DirectionFitMap         m_directionFitMap;                  ///< The direction fit map
-    float                   m_impactRadius;                     ///< The impact radius determining whether a sliding fit extrapolation points to a position 
-    unsigned int            m_extrapolationNSteps;              ///< The number of steps used in the sliding fit extrapolation method
-    float                   m_extrapolationStepSize;            ///< The extrapolation step size.
-    float                   m_minimumClusterLength;             ///< The minimum length a cluster must be in order to be considered 
-    TrackDirectionTool      *m_pTrackDirectionTool;             ///< The track direction tool 
-    DirectionFlowProbabilityTool      *m_pDirectionFlowProbabilityTool;             ///< The direction flow probability tool 
-
-    bool                  m_enableDirection;
+    TrackDirectionTool              *m_pTrackDirectionTool;               ///< The track direction tool 
+    DirectionFlowProbabilityTool    *m_pDirectionFlowProbabilityTool;     ///< The direction flow probability tool 
+    bool                            m_enableDirection;                    ///< Whether to use directional information to modify the vertex candidate scores
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -548,46 +515,6 @@ inline SvmVertexSelectionAlgorithm::EventFeatureInfo::EventFeatureInfo(const flo
     m_nCandidates(nCandidates)
 {
 }
-
-inline SvmVertexSelectionAlgorithm::EmergingCluster* SvmVertexSelectionAlgorithm::EmergingCluster::ParentEmergingCluster() const
-{
-    return m_parent;
-} 
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline bool SvmVertexSelectionAlgorithm::EmergingCluster::HasParent() 
-{
-    return m_hasparent;
-} 
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline const pandora::CartesianVector* SvmVertexSelectionAlgorithm::EmergingCluster::Origin() const
-{
-    return m_origin;
-} 
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline const pandora::CartesianVector* SvmVertexSelectionAlgorithm::EmergingCluster::DirectionBeginpoint() const
-{
-    return m_directionbeginpoint;
-} 
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline const pandora::CartesianVector* SvmVertexSelectionAlgorithm::EmergingCluster::DirectionEndpoint() const
-{
-    return m_directionendpoint;
-} 
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline float SvmVertexSelectionAlgorithm::EmergingCluster::DirectionProbability() 
-{
-    return m_directionprobability;
-} 
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
