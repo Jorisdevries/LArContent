@@ -18,6 +18,7 @@
 #include "larpandoracontent/LArVertex/VertexSelectionBaseAlgorithm.h"
 
 #include "larpandoracontent/LArDirection/TrackDirectionTool.h"
+#include "larpandoracontent/LArDirection/DirectionFlowProbabilityTool.h"
 
 #include <random>
 
@@ -516,6 +517,7 @@ private:
     float                   m_extrapolationStepSize;            ///< The extrapolation step size.
     float                   m_minimumClusterLength;             ///< The minimum length a cluster must be in order to be considered 
     TrackDirectionTool      *m_pTrackDirectionTool;             ///< The track direction tool 
+    DirectionFlowProbabilityTool      *m_pDirectionFlowProbabilityTool;             ///< The direction flow probability tool 
 
     bool                  m_enableDirection;
 };

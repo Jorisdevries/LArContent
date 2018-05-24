@@ -15,6 +15,7 @@
 #include "larpandoracontent/LArDirection/TrackDirectionTool.h"
 #include "larpandoracontent/LArDirection/DirectionClusterSplitting.h"
 #include "larpandoracontent/LArDirection/DirectionAnalysisAlgorithm.h"
+#include "larpandoracontent/LArDirection/DirectionFlowProbabilityTool.h"
 
 #include "larpandoracontent/LArCheating/CheatingBeamParticleIdTool.h"
 #include "larpandoracontent/LArCheating/CheatingClusterCharacterisationAlgorithm.h"
@@ -271,6 +272,7 @@
 #define LAR_ALGORITHM_TOOL_LIST(d)                                                                                              \
     d("LArBdtBeamParticleId",                   BdtBeamParticleIdTool)                                                          \
     d("LArTrackDirectionTool",                  TrackDirectionTool)                                                             \
+    d("LArDirectionFlowProbabilityTool",        DirectionFlowProbabilityTool)                                                   \
     d("LArBeamParticleId",                      BeamParticleIdTool)                                                             \
     d("LArCosmicRayTagging",                    CosmicRayTaggingTool)                                                           \
     d("LArNeutrinoId",                          NeutrinoIdTool)                                                                 \

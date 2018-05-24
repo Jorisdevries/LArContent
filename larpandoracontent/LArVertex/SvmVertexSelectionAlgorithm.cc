@@ -790,11 +790,19 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVertices(const VertexV
         VertexFeatureInfo vertexFeatureInfo(vertexFeatureInfoMap.at(pVertex));
         this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi);
 
-        float vertexScore(LArMvaHelper::CalculateClassificationScore(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
+        float rawScore(LArMvaHelper::CalculateClassificationScore(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
+        float vertexScore(LArMvaHelper::CalculateProbability(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
+
+        std::cout << "SVM raw score: " << rawScore << std::endl;
         std::cout << "SVM probability: " << vertexScore << std::endl;
 
         pandora::CartesianVector vertexPosition(pVertex->GetPosition());
-        vertexScore *= GetDirectionFlowProbability(vertexPosition, clusterList); 
+        //vertexScore *= GetDirectionFlowProbability(vertexPosition, clusterList); 
+
+        std::function< TrackDirectionTool::DirectionFitObject (const pandora::Cluster*) > lambda = [this](const pandora::Cluster* const pCluster){ return this->m_pTrackDirectionTool->GetClusterDirection(pCluster); };
+        float directionFlowProbability(m_pDirectionFlowProbabilityTool->GetDirectionFlowProbability(lambda, vertexPosition, clusterList)); 
+
+        std::cout << "Direction flow probability (metatool): " << directionFlowProbability << std::endl;
 
         if (vertexScore > bestScore)
         {
@@ -1272,7 +1280,16 @@ StatusCode SvmVertexSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
     if (!(this->m_pTrackDirectionTool = dynamic_cast<TrackDirectionTool *>(pAlgorithmTool)))
         throw STATUS_CODE_FAILURE;
 
-    return VertexSelectionBaseAlgorithm::ReadSettings(xmlHandle);
+    AlgorithmTool *pAnotherAlgorithmTool(nullptr);
+
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ProcessAlgorithmTool(*this, xmlHandle, "DirectionFlowProbability", pAnotherAlgorithmTool));
+
+    if (!(this->m_pDirectionFlowProbabilityTool = dynamic_cast<DirectionFlowProbabilityTool *>(pAnotherAlgorithmTool)))
+        throw STATUS_CODE_FAILURE;
+
+    //const auto lambda = [this](int x){ this->m_pTrackDirectionTool->Run(this, x); };
+    //lambda(x);
+    //std::function<void(const int &, const float)>
 
     return VertexSelectionBaseAlgorithm::ReadSettings(xmlHandle);
 }
