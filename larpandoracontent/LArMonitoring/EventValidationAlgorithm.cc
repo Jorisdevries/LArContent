@@ -14,6 +14,8 @@
 
 #include "larpandoracontent/LArMonitoring/EventValidationAlgorithm.h"
 
+#include "larpandoracontent/LArHelpers/LArSpaceChargeHelper.h"
+
 #include <sstream>
 
 using namespace pandora;
@@ -272,9 +274,12 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
                 try
                 {
                     const Vertex *const pRecoVertex(LArPfoHelper::GetVertex(isRecoNeutrinoFinalState ? LArPfoHelper::GetParentNeutrino(pfoToSharedHits.first) : pfoToSharedHits.first));
-                    recoVertexX = pRecoVertex->GetPosition().GetX();
-                    recoVertexY = pRecoVertex->GetPosition().GetY();
-                    recoVertexZ = pRecoVertex->GetPosition().GetZ();
+                    pandora::CartesianVector recoVertexPosition(pRecoVertex->GetPosition());
+                    const CartesianVector correctedVertexPosition(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(recoVertexPosition));
+
+                    recoVertexX = correctedVertexPosition.GetX();
+                    recoVertexY = correctedVertexPosition.GetY();
+                    recoVertexZ = correctedVertexPosition.GetZ();
                 }
                 catch (const StatusCodeException &) {}
 #endif
@@ -613,6 +618,8 @@ bool EventValidationAlgorithm::IsGoodMatch(const CaloHitList &trueHits, const Ca
 
 StatusCode EventValidationAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 {
+    LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
+
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle, "CaloHitListName", m_caloHitListName));
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle, "MCParticleListName", m_mcParticleListName));
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle, "PfoListName", m_pfoListName));

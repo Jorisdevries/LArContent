@@ -1144,6 +1144,7 @@ inline void TrackDirectionTool::DirectionFitObject::DrawFit()
             fitHits->SetPoint(i, hitCharge.GetLongitudinalPosition(), hitCharge.GetChargeOverWidth());
             i++; 
         }    
+
     }
 
     if (m_forwardschisquared/m_nhits > m_backwardschisquared/m_nhits || m_hypothesis == 2)

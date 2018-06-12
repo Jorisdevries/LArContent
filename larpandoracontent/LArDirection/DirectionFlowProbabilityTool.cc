@@ -19,108 +19,127 @@ namespace lar_content
 {
 DirectionFlowProbabilityTool::DirectionFlowProbabilityTool() :
     m_slidingFitWindow(20),
-    m_impactRadius(2.f),
+    m_impactRadius(5.f),
     m_extrapolationNSteps(200),
     m_extrapolationStepSize(0.1f),
-    m_minimumClusterLength(5.f)
+    m_minimumClusterLength(10.f)
 {
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-float DirectionFlowProbabilityTool::GetDirectionFlowProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, pandora::ClusterList &inputClusterList) const
+float DirectionFlowProbabilityTool::GetDirectionFlowProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterList) const
 {
-    //Always interested only in W projection of vertex position
-    const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), vertexPosition, TPC_VIEW_W));
+    try
+    {
+        //Always interested only in W projection of vertex position
+        const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), vertexPosition, TPC_VIEW_W));
+        
+        //Creates sliding fits and direction fits
+        pandora::ClusterVector inputClusterVector;
+        this->SelectClusters(directionToolLambda, inputClusterList, inputClusterVector);
+
+        //Get primary clusters
+        pandora::ClusterVector primaryClusters(this->GetPrimaryClusters(vertexProjection, inputClusterVector));
+
+        //Check if there are any sizable clusters at all
+        if (primaryClusters.size() == 0 || GetSmallestClusterLength(inputClusterVector) < 30.f)
+            return 0.5;
+        
+        float accumulatedProbability(1.f);
+        GetDirectionFlowContribution(inputClusterVector, primaryClusters, vertexProjection, accumulatedProbability);
     
-    //Creates sliding fits and direction fits
-    pandora::ClusterVector inputClusterVector;
-    this->SelectClusters(directionToolLambda, inputClusterList, inputClusterVector);
-    
-    float accumulatedProbability(1.f);
-    pandora::ClusterVector primaryClusters(this->GetPrimaryClusters(vertexProjection, inputClusterVector));
-    
-    //DRAW
-    pandora::ClusterList allClusterListToDraw(inputClusterVector.begin(), inputClusterVector.end());
-    pandora::ClusterList primaryClusterListToDraw(primaryClusters.begin(), primaryClusters.end());
-    pandora::ClusterList daughterClusterListToDraw;
-    
-    if (primaryClusters.size() == 0)
-        return 0.5;
-    
+        return accumulatedProbability;
+    }
+    catch (...)
+    {
+        std::cout << "Something went wring with direction flow." << std::endl;
+        return 0.5f;
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void DirectionFlowProbabilityTool::GetDirectionFlowContribution(pandora::ClusterVector &inputClusterVector, pandora::ClusterVector &primaryClusters, const pandora::CartesianVector &vertexProjection, float &accumulatedProbability) const
+{
     for (const auto pPrimaryCluster : primaryClusters)
     {
-        //TrackDirectionTool::DirectionFitObject pDirectionFit();
         TrackDirectionTool::DirectionFitObject fitResult(this->GetCachedDirectionFit(pPrimaryCluster));
+
+        //DRAW
+        //std::cout << "Min chi squared per hit: " << fitResult.GetMinChiSquaredPerHit() << std::endl;
+        //fitResult.DrawFit();
+        //PANDORA_MONITORING_API(Pause(this->GetPandora()));
         
         if ((vertexProjection - fitResult.GetBeginpoint()).GetMagnitude() < (vertexProjection - fitResult.GetEndpoint()).GetMagnitude())
         {
             float fractionalCloseness(1.0 - ((fitResult.GetBeginpoint() - vertexProjection).GetMagnitude())/((fitResult.GetBeginpoint() - fitResult.GetEndpoint()).GetMagnitude()));
             accumulatedProbability *= fractionalCloseness * fitResult.GetProbability();
-            std::cout << "Primary direction flow contribution: " << fitResult.GetProbability() << std::endl;
-            std::cout << "Primary fractional closeness: " << fractionalCloseness << std::endl;
         }
         else
         {
             float fractionalCloseness(1.0 - ((fitResult.GetEndpoint() - vertexProjection).GetMagnitude())/((fitResult.GetBeginpoint() - fitResult.GetEndpoint()).GetMagnitude()));
             accumulatedProbability *= fractionalCloseness * (1.0 - fitResult.GetProbability());
-            std::cout << "Primary direction flow contribution: " << 1.0 - fitResult.GetProbability() << std::endl;
-            std::cout << "Primary fractional closeness: " << fractionalCloseness << std::endl;
         }
         
         pandora::ClusterVector daughterClusters(this->GetOrderedDaughters(vertexProjection, pPrimaryCluster, inputClusterVector, primaryClusters));
+        DaughtersDirectionFlowContribution(daughterClusters, pPrimaryCluster, vertexProjection, accumulatedProbability);
         
-        TwoDSlidingFitResult parentSlidingFit(this->GetCachedSlidingFit(pPrimaryCluster));
-        pandora::CartesianVector parentOrigin(vertexProjection);
-        
-        for (const auto pDaughterCluster : daughterClusters)
-        {
-            daughterClusterListToDraw.push_back(pDaughterCluster);
-            
-            pandora::CartesianVector currentOrigin((parentSlidingFit.GetGlobalMinLayerPosition() - parentOrigin).GetMagnitude() > (parentSlidingFit.GetGlobalMaxLayerPosition() - parentOrigin).GetMagnitude() ? parentSlidingFit.GetGlobalMinLayerPosition() : parentSlidingFit.GetGlobalMaxLayerPosition()); //whichever sliding fit endpoint is furthest away from the previous origin
-            
-            TrackDirectionTool::DirectionFitObject daughterFitResult(this->GetCachedDirectionFit(pDaughterCluster));
-            
-            //DRAW
-            //daughterFitResult.DrawFit();
-            
-            if ((currentOrigin - daughterFitResult.GetBeginpoint()).GetMagnitude() < (currentOrigin - daughterFitResult.GetEndpoint()).GetMagnitude())
-            {
-                float fractionalCloseness(1.0 - ((daughterFitResult.GetBeginpoint() - currentOrigin).GetMagnitude())/((daughterFitResult.GetBeginpoint() - daughterFitResult.GetEndpoint()).GetMagnitude()));
-                accumulatedProbability *= fractionalCloseness * daughterFitResult.GetProbability();
-                std::cout << "Daughter direction flow contribution: " << daughterFitResult.GetProbability() << std::endl;
-                std::cout << "Daughter fractional closeness: " << fractionalCloseness << std::endl;
-            }
-            else
-            {
-                float fractionalCloseness(1.0 - ((daughterFitResult.GetEndpoint() - currentOrigin).GetMagnitude())/((daughterFitResult.GetBeginpoint() - daughterFitResult.GetEndpoint()).GetMagnitude()));
-                accumulatedProbability *= fractionalCloseness * (1.0 - daughterFitResult.GetProbability());
-                std::cout << "Daughter direction flow contribution: " << 1.0 - daughterFitResult.GetProbability() << std::endl;
-                std::cout << "Daughter fractional closeness: " << fractionalCloseness << std::endl;
-            }
-            
-            parentOrigin = currentOrigin;
-            parentSlidingFit = this->GetCachedSlidingFit(pDaughterCluster);
-        }
     }
-    
-    //DRAW
-    /*
-     PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "PrimaryVertexProjection", RED, 1));
-     PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &allClusterListToDraw, "SelectedClusters", BLACK));
-     PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &primaryClusterListToDraw, "PrimaryClusters", BLUE));
-     PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &daughterClusterListToDraw, "DaughterClusters", GREEN));
-     PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
-     */
-    
-    std::cout << "Direction flow probability: " << accumulatedProbability << std::endl;
-    
-    return accumulatedProbability;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void DirectionFlowProbabilityTool::SelectClusters(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, pandora::ClusterList &clusterList, pandora::ClusterVector &selectedClusterVector) const
+void DirectionFlowProbabilityTool::DaughtersDirectionFlowContribution(pandora::ClusterVector &daughterClusters, const pandora::Cluster* const pPrimaryCluster, const pandora::CartesianVector &vertexProjection, float &accumulatedProbability) const
+{
+    TwoDSlidingFitResult parentSlidingFit(this->GetCachedSlidingFit(pPrimaryCluster));
+    pandora::CartesianVector parentOrigin(vertexProjection);
+    
+    for (const auto pDaughterCluster : daughterClusters)
+    {
+        pandora::CartesianVector currentOrigin((parentSlidingFit.GetGlobalMinLayerPosition() - parentOrigin).GetMagnitude() > (parentSlidingFit.GetGlobalMaxLayerPosition() - parentOrigin).GetMagnitude() ? parentSlidingFit.GetGlobalMinLayerPosition() : parentSlidingFit.GetGlobalMaxLayerPosition()); //whichever sliding fit endpoint is furthest away from the previous origin
+        
+        TrackDirectionTool::DirectionFitObject daughterFitResult(this->GetCachedDirectionFit(pDaughterCluster));
+        
+        //DRAW
+        //std::cout << "Min chi squared per hit: " << daughterFitResult.GetMinChiSquaredPerHit() << std::endl;
+        //daughterFitResult.DrawFit();
+        //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
+        
+        if ((currentOrigin - daughterFitResult.GetBeginpoint()).GetMagnitude() < (currentOrigin - daughterFitResult.GetEndpoint()).GetMagnitude())
+        {
+            float fractionalCloseness(1.0-((daughterFitResult.GetBeginpoint() - currentOrigin).GetMagnitude())/((daughterFitResult.GetBeginpoint() - daughterFitResult.GetEndpoint()).GetMagnitude()));
+            accumulatedProbability *= fractionalCloseness * daughterFitResult.GetProbability();
+        }
+        else
+        {
+            float fractionalCloseness(1.0-((daughterFitResult.GetEndpoint() - currentOrigin).GetMagnitude())/((daughterFitResult.GetBeginpoint() - daughterFitResult.GetEndpoint()).GetMagnitude()));
+            accumulatedProbability *= fractionalCloseness * (1.0 - daughterFitResult.GetProbability());
+        }
+        
+        parentOrigin = currentOrigin;
+        parentSlidingFit = this->GetCachedSlidingFit(pDaughterCluster);
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float DirectionFlowProbabilityTool::GetSmallestClusterLength(pandora::ClusterVector &inputClusterVector) const
+{
+    float longestClusterLength(0.f);
+
+    for (const auto pCluster : inputClusterVector)
+    {
+        if (LArClusterHelper::GetLength(pCluster) > longestClusterLength)
+            longestClusterLength = LArClusterHelper::GetLength(pCluster);
+    }
+
+    return longestClusterLength;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void DirectionFlowProbabilityTool::SelectClusters(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::ClusterList &clusterList, pandora::ClusterVector &selectedClusterVector) const
 {
     ClusterVector sortedClusters(clusterList.begin(), clusterList.end());
     std::sort(sortedClusters.begin(), sortedClusters.end(), LArClusterHelper::SortByNHits);
@@ -133,7 +152,8 @@ void DirectionFlowProbabilityTool::SelectClusters(std::function< TrackDirectionT
         try
         {
             this->AddToSlidingFitCache(directionToolLambda, pCluster);
-            selectedClusterVector.push_back(pCluster);
+            if (this->GetCachedDirectionFit(pCluster).GetMinChiSquaredPerHit() < 4.0)
+                selectedClusterVector.push_back(pCluster);
         }
         catch (StatusCodeException &statusCodeException)
         {
@@ -151,6 +171,9 @@ pandora::ClusterVector DirectionFlowProbabilityTool::GetPrimaryClusters(const pa
 {
     ClusterToSpacepointsMap clusterToSpacepointsMap(this->FillClusterToSpacepointsMap(inputClusterVector));
     ClusterVector primaryClusterVector;
+
+    const pandora::ClusterList clusterList(inputClusterVector.begin(), inputClusterVector.end());
+    const pandora::CartesianVector closestHitPosition(clusterList.size() != 0 ? LArClusterHelper::GetClosestPosition(positionVector, clusterList) : positionVector);
     
     for (const auto pCluster : inputClusterVector)
     {

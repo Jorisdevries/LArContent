@@ -70,7 +70,7 @@ StatusCode DirectionClusterSplitting::Run()
     }
     catch (StatusCodeException &statusCodeException)
     {
-        throw statusCodeException;
+        return STATUS_CODE_SUCCESS;
     }
 
     //this->CountClusters();
@@ -288,7 +288,7 @@ void DirectionClusterSplitting::DivideCaloHits(const pandora::Cluster* pCluster,
     pandora::CaloHitVector caloHitVector(caloHitList.begin(), caloHitList.end());
 
     //Sort by Z with lambda function
-    std::sort(caloHitVector.begin(), caloHitVector.end(), [](auto pCaloHit1, auto pCaloHit2)  {return pCaloHit1->GetPositionVector().GetZ() < pCaloHit2->GetPositionVector().GetZ();});
+    std::sort(caloHitVector.begin(), caloHitVector.end(), [](const pandora::CaloHit* const pCaloHit1, const pandora::CaloHit* const pCaloHit2)  {return pCaloHit1->GetPositionVector().GetZ() < pCaloHit2->GetPositionVector().GetZ();});
 
     auto pLowZCaloHit(caloHitVector.front());
 

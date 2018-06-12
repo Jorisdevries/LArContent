@@ -24,17 +24,18 @@ namespace lar_content
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-std::string clusterTreeName("Cluster"), pfoTreeName("PFO"), hitTreeName("Hit"), vertexTreeName("Vertex");
+std::string mcTreeName("MC"), clusterTreeName("Cluster"), pfoTreeName("PFO"), hitTreeName("Hit"), vertexTreeName("Vertex");
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 DirectionAnalysisAlgorithm::DirectionAnalysisAlgorithm():
     m_targetParticlePDG(13),
     m_particleContained(true),
+    m_minParticleLength(30.f),
     m_cosmic(true),
     m_data(false),
     m_drawFit(false),
-    m_fileIdentifier(0),
+    m_fileIdentifier(1),
     m_eventNumber(-1)
 {
 }
@@ -45,6 +46,9 @@ DirectionAnalysisAlgorithm::~DirectionAnalysisAlgorithm()
 {
     if (m_writeToTree)
     {    
+        if (!m_data)
+            PANDORA_MONITORING_API(SaveTree(this->GetPandora(), mcTreeName.c_str(), m_fileName.c_str(), "UPDATE"));
+
         PANDORA_MONITORING_API(SaveTree(this->GetPandora(), clusterTreeName.c_str(), m_fileName.c_str(), "UPDATE"));
         PANDORA_MONITORING_API(SaveTree(this->GetPandora(), pfoTreeName.c_str(), m_fileName.c_str(), "UPDATE"));
         PANDORA_MONITORING_API(SaveTree(this->GetPandora(), hitTreeName.c_str(), m_fileName.c_str(), "UPDATE"));
@@ -81,11 +85,6 @@ StatusCode DirectionAnalysisAlgorithm::Run()
 
     pandora::PfoVector pfoVector(allPfos.begin(), allPfos.end());
 
-    std::cout << "pfoVector.size(): " << pfoVector.size() << std::endl;
-
-    if (pVertexList->size() != 1)
-        std::cout << "TOO MANY VERTICES" << std::endl;
-
     const pandora::Vertex* const pNeutrinoVertex(pVertexList->front());
 
     pandora::MCParticleVector trueNeutrinos;
@@ -103,11 +102,50 @@ StatusCode DirectionAnalysisAlgorithm::Run()
     
     LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
 
+    if (!m_data)
+        this->WriteMCInformation(pMCParticleList, pCaloHitList);
+
     this->WritePfoInformation(pfoVector);
     this->WriteClusterAndHitInformation(clusterVector);
-    this->WriteVertexInformation(pMCParticleList, pCaloHitList, pNeutrinoVertex, pfoVector);
+
+    if (!m_cosmic)
+        this->WriteVertexInformation(pMCParticleList, pCaloHitList, pNeutrinoVertex, pfoVector);
     
     return STATUS_CODE_SUCCESS;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void DirectionAnalysisAlgorithm::WriteMCInformation(const pandora::MCParticleList *pMCParticleList, const pandora::CaloHitList *pCaloHitList)
+{
+    LArMCParticleHelper::MCRelationMap mcPrimaryMap;
+    LArMCParticleHelper::GetMCPrimaryMap(pMCParticleList, mcPrimaryMap);
+
+    LArMCParticleHelper::CaloHitToMCMap hitToMCMap;
+    LArMCParticleHelper::MCContributionMap mcToTrueHitListMap;
+    LArMCParticleHelper::GetMCParticleToCaloHitMatches(pCaloHitList, mcPrimaryMap, hitToMCMap, mcToTrueHitListMap);
+
+    LArMCParticleHelper::MCContributionMap cosmicPrimaryMCParticles, neutrinoPrimaryMCParticles;
+    LArMCParticleHelper::PrimaryParameters parameters;
+    LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, parameters, LArMCParticleHelper::IsCosmicRay, cosmicPrimaryMCParticles);
+    LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, parameters, LArMCParticleHelper::IsBeamNeutrinoFinalState, neutrinoPrimaryMCParticles);
+
+    int nCosmicPrimaryMCParticles(cosmicPrimaryMCParticles.size()), nNeutrinoPrimaryMCParticles(neutrinoPrimaryMCParticles.size());
+
+    for (const auto pMCParticle : *pMCParticleList)
+    {
+        float energy(pMCParticle->GetEnergy()), length((pMCParticle->GetVertex() - pMCParticle->GetEndpoint()).GetMagnitude());
+        int numberHits(mcToTrueHitListMap.count(pMCParticle) != 0 ? mcToTrueHitListMap.at(pMCParticle).size() : 0);
+
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), mcTreeName.c_str(), "Energy", energy));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), mcTreeName.c_str(), "Length", length));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), mcTreeName.c_str(), "NumberHits", numberHits));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), mcTreeName.c_str(), "NCosmicPrimaryMCParticles", nCosmicPrimaryMCParticles));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), mcTreeName.c_str(), "NNeutrinoPrimaryMCParticles", nNeutrinoPrimaryMCParticles));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), mcTreeName.c_str(), "FileIdentifier", m_fileIdentifier));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), mcTreeName.c_str(), "EventNumber", m_eventNumber));
+        PANDORA_MONITORING_API(FillTree(this->GetPandora(), mcTreeName.c_str()));
+    }
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -146,6 +184,9 @@ void DirectionAnalysisAlgorithm::WriteVertexInformation(const pandora::MCParticl
 
     float vertexDR(this->GetVertexDR(pMCParticleList, pVertex, false));
     float sccVertexDR(this->GetVertexDR(pMCParticleList, pVertex, true));
+
+    std::cout << "Vertex DR: " << vertexDR << std::endl;
+    std::cout << "SCE Vertex DR: " << sccVertexDR << std::endl;
 
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "nMuons", nMuons));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "nProtons", nProtons));
@@ -212,14 +253,17 @@ void DirectionAnalysisAlgorithm::WritePfoInformation(pandora::PfoVector &pfoVect
 
 bool DirectionAnalysisAlgorithm::IsGoodPfo(const pandora::ParticleFlowObject* pPfo)
 {
-    //const MCParticle* const pMCParticle(LArMCParticleHelper::GetMainMCParticle(pPfo));
-    const Cluster *const pCluster = this->GetTargetClusterFromPFO(pPfo); 
-    const MCParticle* const pMCParticle(MCParticleHelper::GetMainMCParticle(pCluster));
+    const MCParticle* const pMCParticle(LArMCParticleHelper::GetMainMCParticle(pPfo));
+    //const Cluster *const pCluster = this->GetTargetClusterFromPFO(pPfo); 
+    //const MCParticle* const pMCParticle(MCParticleHelper::GetMainMCParticle(pCluster));
 
     if (!LArPfoHelper::IsFinalState(pPfo))
         return false;
 
-    if ((m_particleContained && !m_data && IsParticleContained(pMCParticle)) || (m_particleContained && m_data && !IsRecoParticleContained(pPfo)))
+    //if (LArClusterHelper::GetLength(pCluster) < m_minParticleLength)
+    //    return false;
+
+    if ((m_particleContained && !m_data && !IsParticleContained(pMCParticle)) || (m_particleContained && m_data && !IsRecoParticleContained(pPfo)))
         return false;
 
     if (pMCParticle->GetParticleId() != m_targetParticlePDG)
@@ -245,9 +289,12 @@ void DirectionAnalysisAlgorithm::WriteClusterAndHitInformation(pandora::ClusterV
             if (LArClusterHelper::GetClusterHitType(pCluster) != TPC_VIEW_W)
                 continue;
 
+            if (LArClusterHelper::GetLength(pCluster) < m_minParticleLength)
+                continue;
+
             const MCParticle* const pMCParticle(MCParticleHelper::GetMainMCParticle(pCluster));
 
-            if ((m_particleContained && !m_data && IsParticleContained(pMCParticle)) || (m_particleContained && m_data && !IsRecoParticleContained(pCluster)))
+            if ((m_particleContained && !m_data && !IsParticleContained(pMCParticle)) || (m_particleContained && m_data && !IsRecoParticleContained(pCluster)))
                 continue;
 
             if (pMCParticle->GetParticleId() != m_targetParticlePDG)
@@ -689,6 +736,9 @@ StatusCode DirectionAnalysisAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "ParticleContained", m_particleContained));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "MinParticleLength", m_minParticleLength));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "Cosmic", m_cosmic));

@@ -32,7 +32,7 @@ public:
      */
     DirectionFlowProbabilityTool();
     
-    float GetDirectionFlowProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, pandora::ClusterList &inputClusterVector) const;
+    float GetDirectionFlowProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterVector) const;
 
 protected:
     pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
@@ -40,8 +40,14 @@ protected:
 private:
     typedef std::unordered_map<const pandora::Cluster*, pandora::CartesianPointVector> ClusterToSpacepointsMap;
     typedef std::map<const pandora::Cluster*, TrackDirectionTool::DirectionFitObject> DirectionFitMap;
+
+    void GetDirectionFlowContribution(pandora::ClusterVector &inputClusterVector, pandora::ClusterVector &primaryClusters, const pandora::CartesianVector &vertexProjection, float &accumulatedProbability) const;
+
+    void DaughtersDirectionFlowContribution(pandora::ClusterVector &daughterClusters, const pandora::Cluster* const pPrimaryCluster, const pandora::CartesianVector &vertexProjection, float &accumulatedProbability) const;
+
+    float GetSmallestClusterLength(pandora::ClusterVector &inputClusterVector) const;
     
-    void SelectClusters(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, pandora::ClusterList &clusterList, pandora::ClusterVector &selectedClusterVector) const;
+    void SelectClusters(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::ClusterList &clusterList, pandora::ClusterVector &selectedClusterVector) const;
     
     pandora::ClusterVector GetPrimaryClusters(const pandora::CartesianVector &positionVector, const pandora::ClusterVector &inputClusterVector) const;
     

@@ -46,7 +46,7 @@ MasterAlgorithm::MasterAlgorithm() :
     m_pSliceNuWorkerInstance(nullptr),
     m_pSliceCRWorkerInstance(nullptr),
     m_fullWidthCRWorkerWireGaps(true),
-    m_passMCParticlesToWorkerInstances(false),
+    m_passMCParticlesToWorkerInstances(true),
     m_filePathEnvironmentVariable("FW_SEARCH_PATH"),
     m_inTimeMaxX0(1.f)
 {

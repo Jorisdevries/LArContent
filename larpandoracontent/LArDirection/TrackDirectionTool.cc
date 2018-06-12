@@ -1376,7 +1376,7 @@ void TrackDirectionTool::ComputeProbability(DirectionFitObject &fitResult)
 
     if (deltaChiSquaredPerHit < -15.0 || deltaChiSquaredPerHit > 15.0)
     {
-        float probability(0.5);
+        float probability(deltaChiSquaredPerHit < -15.0 ? 0.75 : 0.25);
         fitResult.SetProbability(probability);
         return;
     }

@@ -25,6 +25,8 @@
 
 #include "larpandoracontent/LArUtility/KDTreeLinkerAlgoT.h"
 
+#include "larpandoracontent/LArHelpers/LArSpaceChargeHelper.h"
+
 #include <random>
 
 using namespace pandora;
@@ -53,7 +55,8 @@ SvmVertexSelectionAlgorithm::SvmVertexSelectionAlgorithm() :
     m_maxTrueVertexRadius(1.f),
     m_useRPhiFeatureForRegion(false),
     m_dropFailedRPhiFastScoreCandidates(true),
-    m_enableDirection(true)
+    m_enableDirection(true),
+    m_fileIdentifier(1)
 {
 }
 
@@ -101,7 +104,7 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
     VertexFeatureInfoMap vertexFeatureInfoMap;
     for (const Vertex *const pVertex : vertexVector)
     {
-        this->PopulateVertexFeatureInfoMap(beamConstants, clusterListMap, slidingFitDataListMap, showerClusterListMap, kdTreeMap, pVertex,
+        this->PopulateVertexFeatureInfoMap(beamConstants, clustersW, clusterListMap, slidingFitDataListMap, showerClusterListMap, kdTreeMap, pVertex,
             vertexFeatureInfoMap);
     }
 
@@ -125,6 +128,7 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
 
     //TEST
     /*
+    PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersW, "ClustersW", BLACK));
     for (const auto pTestVertex : vertexVector)
     {
         ClusterList clusterListToDraw;
@@ -137,9 +141,16 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
         const pandora::CartesianVector vertexPosition(pTestVertex->GetPosition());
         const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), vertexPosition, TPC_VIEW_W));
 
-        float directionFlowProbability(this->GetDirectionFlowProbability(vertexPosition, clustersW));
+        std::function< TrackDirectionTool::DirectionFitObject (const pandora::Cluster*) > lambda = [this](const pandora::Cluster* const pCluster){ return this->m_pTrackDirectionTool->GetClusterDirection(pCluster); };
+
+        float directionFlowProbability(m_pDirectionFlowProbabilityTool->GetDirectionFlowProbability(lambda, vertexProjection, clustersW)); 
         (void) directionFlowProbability;
+
+        //DRAW
+        //std::cout << "directionFlowProbability: " << directionFlowProbability << std::endl;
+        PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "PrimaryVertexProjection", RED, 1));
     }
+    PANDORA_MONITORING_API(Pause(this->GetPandora()));
     */
     //TEST
 
@@ -152,11 +163,23 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
         const Vertex* pBestRegionVertex;
 
         if (m_enableDirection)
-            pBestRegionVertex = this->ScoreVertices(bestRegionVertices, clustersW, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
-            m_useRPhiFeatureForRegion);
+        {
+            try
+            {
+                pBestRegionVertex = this->ScoreVertices(bestRegionVertices, clustersW, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
+                m_useRPhiFeatureForRegion, m_enableDirection);
+            }
+            catch (...)
+            {
+                std::cout << "Something went wrong, reverting to normal vertex region selection." << std::endl;
+
+                pBestRegionVertex = this->CompareVertices(bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
+                m_useRPhiFeatureForRegion, m_enableDirection);
+            }
+        }
         else
             pBestRegionVertex = this->CompareVertices(bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
-            m_useRPhiFeatureForRegion);
+            m_useRPhiFeatureForRegion, m_enableDirection);
 
         // Get all the vertices in the best region.
         VertexVector regionalVertices{pBestRegionVertex};
@@ -174,7 +197,7 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
         if (!regionalVertices.empty())
         {
             // Use svm to choose the vertex and then fine-tune using the RPhi score.
-            const Vertex *const pBestVertex(this->CompareVertices(regionalVertices, vertexFeatureInfoMap, eventFeatureList, m_svMachineVertex, true));
+            const Vertex *const pBestVertex(this->CompareVertices(regionalVertices, vertexFeatureInfoMap, eventFeatureList, m_svMachineVertex, true, false));
             this->PopulateFinalVertexScoreList(vertexFeatureInfoMap, pBestVertex, vertexVector, vertexScoreList);
         }
     }
@@ -222,7 +245,6 @@ void SvmVertexSelectionAlgorithm::CalculateShowerClusterList(const ClusterList &
                     break;
             }
         }
-
         unsigned int totHits(0);
         for (const Cluster *const pCluster : showerCluster)
             totHits += pCluster->GetNCaloHits();
@@ -392,6 +414,10 @@ void SvmVertexSelectionAlgorithm::IncrementShoweryParameters(const ClusterList &
 
         eventEnergy += pCluster->GetElectromagneticEnergy();
         nHits += pCluster->GetNCaloHits();
+
+        OrderedCaloHitList orderedCaloHitList(pCluster->GetOrderedCaloHitList());
+        CaloHitList caloHitList;
+        orderedCaloHitList.FillCaloHitList(caloHitList);    
     }
 }
 
@@ -480,7 +506,7 @@ void SvmVertexSelectionAlgorithm::AddEventFeaturesToVector(const EventFeatureInf
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void SvmVertexSelectionAlgorithm::PopulateVertexFeatureInfoMap(const BeamConstants &beamConstants, const ClusterListMap &clusterListMap,
+void SvmVertexSelectionAlgorithm::PopulateVertexFeatureInfoMap(const BeamConstants &beamConstants, const pandora::ClusterList &clustersW, const ClusterListMap &clusterListMap,
     const SlidingFitDataListMap &slidingFitDataListMap, const ShowerClusterListMap &showerClusterListMap, const KDTreeMap &kdTreeMap,
     const Vertex *const pVertex, VertexFeatureInfoMap &vertexFeatureInfoMap) const
 {
@@ -503,7 +529,12 @@ void SvmVertexSelectionAlgorithm::PopulateVertexFeatureInfoMap(const BeamConstan
     //const double rPhiFeature(LArMvaHelper::CalculateFeaturesOfType<RPhiFeatureTool>(m_featureToolVector, this, pVertex,
     //    slidingFitDataListMap, clusterListMap, kdTreeMap, showerClusterListMap, beamDeweighting, bestFastScore).at(0).Get());
 
-    VertexFeatureInfo vertexFeatureInfo(beamDeweighting, 0.f, energyKick, localAsymmetry, globalAsymmetry, showerAsymmetry);
+    const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pVertex->GetPosition(), TPC_VIEW_W));
+    std::function<TrackDirectionTool::DirectionFitObject (const pandora::Cluster*)> lambda = [this](const pandora::Cluster* const pCluster){return this->m_pTrackDirectionTool->GetClusterDirection(pCluster);};
+
+    const double directionFeature(m_pDirectionFlowProbabilityTool->GetDirectionFlowProbability(lambda, vertexProjection, clustersW));
+
+    VertexFeatureInfo vertexFeatureInfo(beamDeweighting, 0.f, directionFeature, energyKick, localAsymmetry, globalAsymmetry, showerAsymmetry);
     vertexFeatureInfoMap.emplace(pVertex, vertexFeatureInfo);
 }
 
@@ -573,7 +604,7 @@ void SvmVertexSelectionAlgorithm::ProduceTrainingSets(const VertexVector &vertex
 
     // Produce training examples for the vertices representing regions.
     const Vertex *const pBestRegionVertex(this->ProduceTrainingExamples(bestRegionVertices, vertexFeatureInfoMap, coinFlip, generator,
-        interactionType, m_trainingOutputFileRegion, eventFeatureList, m_regionRadius, m_useRPhiFeatureForRegion));
+        interactionType, m_trainingOutputFileRegion, eventFeatureList, m_regionRadius, m_useRPhiFeatureForRegion, m_enableDirection));
 
     // Get all the vertices in the best region.
     VertexVector regionalVertices{pBestRegionVertex};
@@ -592,7 +623,7 @@ void SvmVertexSelectionAlgorithm::ProduceTrainingSets(const VertexVector &vertex
     if (!regionalVertices.empty())
     {
         this->ProduceTrainingExamples(regionalVertices, vertexFeatureInfoMap, coinFlip, generator, interactionType, m_trainingOutputFileVertex,
-            eventFeatureList, m_maxTrueVertexRadius, true);
+            eventFeatureList, m_maxTrueVertexRadius, true, false);
     }
 }
 
@@ -647,7 +678,7 @@ std::string SvmVertexSelectionAlgorithm::GetInteractionType() const
 const pandora::Vertex * SvmVertexSelectionAlgorithm::ProduceTrainingExamples(const VertexVector &vertexVector,
     const VertexFeatureInfoMap &vertexFeatureInfoMap, std::bernoulli_distribution &coinFlip, std::mt19937 &generator,
     const std::string &interactionType, const std::string &trainingOutputFile, const LArMvaHelper::MvaFeatureVector &eventFeatureList,
-    const float maxRadius, const bool useRPhi) const
+    const float maxRadius, const bool useRPhi, const bool useDirection) const
 {
     const Vertex *pBestVertex(nullptr);
     float bestVertexDr(std::numeric_limits<float>::max());
@@ -656,7 +687,9 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ProduceTrainingExamples(con
     this->GetBestVertex(vertexVector, pBestVertex, bestVertexDr);
 
     VertexFeatureInfo bestVertexFeatureInfo(vertexFeatureInfoMap.at(pBestVertex));
-    this->AddVertexFeaturesToVector(bestVertexFeatureInfo, bestVertexFeatureList, useRPhi);
+    this->AddVertexFeaturesToVector(bestVertexFeatureInfo, bestVertexFeatureList, useRPhi, useDirection);
+
+    std::string fileString(std::to_string(m_fileIdentifier));
 
     for (const Vertex *const pVertex : vertexVector)
     {
@@ -665,19 +698,19 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ProduceTrainingExamples(con
 
         LArMvaHelper::MvaFeatureVector featureList;
         VertexFeatureInfo vertexFeatureInfo(vertexFeatureInfoMap.at(pVertex));
-        this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi);
+        this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi, useDirection);
 
         if (pBestVertex && (bestVertexDr < maxRadius))
         {
             if (coinFlip(generator))
             {
-                LArMvaHelper::ProduceTrainingExample(trainingOutputFile + "_" + interactionType + ".txt", true, eventFeatureList,
+                LArMvaHelper::ProduceTrainingExample("/usera/jjd49/pandora_direction/CondorUtilities/txts/" + fileString + "_" + trainingOutputFile + "_" + interactionType + ".txt", true, eventFeatureList,
                     bestVertexFeatureList, featureList);
             }
 
             else
             {
-                LArMvaHelper::ProduceTrainingExample(trainingOutputFile + "_" + interactionType + ".txt", false, eventFeatureList, featureList,
+                LArMvaHelper::ProduceTrainingExample("/usera/jjd49/pandora_direction/CondorUtilities/txts/" + fileString + "_" + trainingOutputFile + "_" + interactionType + ".txt", false, eventFeatureList, featureList,
                     bestVertexFeatureList);
             }
         }
@@ -700,13 +733,16 @@ void SvmVertexSelectionAlgorithm::GetBestVertex(const VertexVector &vertexVector
 
     for (const Vertex *const pVertex : vertexVector)
     {
+        CartesianVector vertexPosition(pVertex->GetPosition());
+        const CartesianVector correctedVertexPosition(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexPosition));
+ 
         float mcVertexDr(std::numeric_limits<float>::max());
         for (const MCParticle *const pMCNeutrino : mcNeutrinoVector)
         {
             const CartesianVector mcNeutrinoPosition(pMCNeutrino->GetEndpoint().GetX() + m_mcVertexXCorrection, pMCNeutrino->GetEndpoint().GetY(),
                 pMCNeutrino->GetEndpoint().GetZ());
 
-            const float dr = (mcNeutrinoPosition - pVertex->GetPosition()).GetMagnitude();
+            const float dr = (mcNeutrinoPosition - correctedVertexPosition).GetMagnitude();
             if (dr < mcVertexDr)
                 mcVertexDr = dr;
         }
@@ -722,7 +758,7 @@ void SvmVertexSelectionAlgorithm::GetBestVertex(const VertexVector &vertexVector
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 void SvmVertexSelectionAlgorithm::AddVertexFeaturesToVector(const VertexFeatureInfo &vertexFeatureInfo,
-    LArMvaHelper::MvaFeatureVector &featureVector, const bool useRPhi) const
+    LArMvaHelper::MvaFeatureVector &featureVector, const bool useRPhi, const bool useDirection) const
 {
     featureVector.push_back(static_cast<double>(vertexFeatureInfo.m_beamDeweighting));
     featureVector.push_back(static_cast<double>(vertexFeatureInfo.m_energyKick));
@@ -732,18 +768,21 @@ void SvmVertexSelectionAlgorithm::AddVertexFeaturesToVector(const VertexFeatureI
 
     if (useRPhi)
         featureVector.push_back(static_cast<double>(vertexFeatureInfo.m_rPhiFeature));
+
+    if (useDirection)
+        featureVector.push_back(static_cast<double>(vertexFeatureInfo.m_directionFeature));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 const pandora::Vertex * SvmVertexSelectionAlgorithm::CompareVertices(const VertexVector &vertexVector, const VertexFeatureInfoMap &vertexFeatureInfoMap,
-    const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi) const
+    const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi, const bool useDirection) const
 {
     const Vertex *pBestVertex(vertexVector.front());
     LArMvaHelper::MvaFeatureVector chosenFeatureList;
 
     VertexFeatureInfo chosenVertexFeatureInfo(vertexFeatureInfoMap.at(pBestVertex));
-    this->AddVertexFeaturesToVector(chosenVertexFeatureInfo, chosenFeatureList, useRPhi);
+    this->AddVertexFeaturesToVector(chosenVertexFeatureInfo, chosenFeatureList, useRPhi, useDirection);
 
     for (const Vertex *const pVertex : vertexVector)
     {
@@ -752,7 +791,7 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::CompareVertices(const Verte
 
         LArMvaHelper::MvaFeatureVector featureList;
         VertexFeatureInfo vertexFeatureInfo(vertexFeatureInfoMap.at(pVertex));
-        this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi);
+        this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi, useDirection);
 
         if (LArMvaHelper::Classify(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList))
         {
@@ -767,15 +806,14 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::CompareVertices(const Verte
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVertices(const VertexVector &vertexVector, ClusterList &clusterList, const VertexFeatureInfoMap &vertexFeatureInfoMap,
-    const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi) const 
+    const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi, const bool useDirection) const 
 {
     const Vertex *pBestVertex(vertexVector.front());
     LArMvaHelper::MvaFeatureVector chosenFeatureList;
 
     VertexFeatureInfo chosenVertexFeatureInfo(vertexFeatureInfoMap.at(pBestVertex));
-    this->AddVertexFeaturesToVector(chosenVertexFeatureInfo, chosenFeatureList, useRPhi);
+    this->AddVertexFeaturesToVector(chosenVertexFeatureInfo, chosenFeatureList, useRPhi, useDirection);
 
-    float bestScore(0.f);
 
     for (const Vertex *const pVertex : vertexVector)
     {
@@ -784,25 +822,20 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVertices(const VertexV
 
         LArMvaHelper::MvaFeatureVector featureList;
         VertexFeatureInfo vertexFeatureInfo(vertexFeatureInfoMap.at(pVertex));
-        this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi);
+        this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi, useDirection);
 
-        float rawScore(LArMvaHelper::CalculateClassificationScore(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
-        float vertexScore(LArMvaHelper::CalculateProbability(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
+        float newVertexProbability(LArMvaHelper::CalculateProbability(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
+        float bestVertexProbability(LArMvaHelper::CalculateProbability(supportVectorMachine, eventFeatureList, chosenFeatureList, featureList));
 
-        std::cout << "SVM raw score: " << rawScore << std::endl;
-        std::cout << "SVM probability: " << vertexScore << std::endl;
-
-        pandora::CartesianVector vertexPosition(pVertex->GetPosition());
-        //vertexScore *= GetDirectionFlowProbability(vertexPosition, clusterList); 
+        pandora::CartesianVector newVertexPosition(pVertex->GetPosition()), bestVertexPoasition(pBestVertex->GetPosition());
 
         std::function< TrackDirectionTool::DirectionFitObject (const pandora::Cluster*) > lambda = [this](const pandora::Cluster* const pCluster){ return this->m_pTrackDirectionTool->GetClusterDirection(pCluster); };
-        float directionFlowProbability(m_pDirectionFlowProbabilityTool->GetDirectionFlowProbability(lambda, vertexPosition, clusterList)); 
 
-        std::cout << "Direction flow probability (metatool): " << directionFlowProbability << std::endl;
+        float newDirectionFlowProbability(m_pDirectionFlowProbabilityTool->GetDirectionFlowProbability(lambda, newVertexPosition, clusterList)); 
+        float bestDirectionFlowProbability(m_pDirectionFlowProbabilityTool->GetDirectionFlowProbability(lambda, bestVertexPoasition, clusterList)); 
 
-        if (vertexScore > bestScore)
+        if (newVertexProbability * newDirectionFlowProbability > bestVertexProbability * bestDirectionFlowProbability)
         {
-            bestScore = vertexScore;
             pBestVertex = pVertex;
             chosenFeatureList = featureList;
         }
@@ -836,6 +869,8 @@ void SvmVertexSelectionAlgorithm::PopulateFinalVertexScoreList(const VertexFeatu
 
 StatusCode SvmVertexSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 {
+    LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
+
     AlgorithmToolVector algorithmToolVector;
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ProcessAlgorithmToolList(*this, xmlHandle, "FeatureTools", algorithmToolVector));
 
@@ -956,6 +991,9 @@ StatusCode SvmVertexSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "EnableDirection", m_enableDirection));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "FileIdentifier", m_fileIdentifier));
 
     AlgorithmTool *pAlgorithmTool(nullptr);
 

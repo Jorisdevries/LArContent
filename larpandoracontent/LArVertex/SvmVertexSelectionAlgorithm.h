@@ -37,60 +37,6 @@ class SvmVertexSelectionAlgorithm : public VertexSelectionBaseAlgorithm
 {
 public:
     /**
-     *  @brief Emerging cluster info class
-     */
-    class EmergingCluster
-    {
-    public:
-        /**
-         *  @brief  Constructor
-         *
-         *  @param  beamDeweighting the beam deweighting feature
-         *  @param  rPhiFeature the r/phi feature
-         */
-        EmergingCluster(const pandora::CartesianVector originPosition, EmergingCluster* pEmergingCluster, bool hasParent, const pandora::CartesianVector directionBeginpoint, const pandora::CartesianVector directionEndpoint, float directionProbability);
-
-        /**
-         *  @brief  Constructor
-         */
-        EmergingCluster* ParentEmergingCluster() const;
-
-        /**
-         *  @brief  Constructor
-         */
-        bool HasParent();
-
-        /**
-         *  @brief  Constructor
-         */
-        const pandora::CartesianVector* Origin() const;
-
-        /**
-         *  @brief  Constructor
-         */
-        const pandora::CartesianVector* DirectionBeginpoint() const;
-
-        /**
-         *  @brief  Constructor
-         */
-        const pandora::CartesianVector* DirectionEndpoint() const;
-
-        /**
-         *  @brief  Constructor
-         */
-        float DirectionProbability();
-
-        const pandora::CartesianVector*             m_origin;           ///< The point of origin.
-        EmergingCluster*                            m_parent;           ///< The parent EmergingCluster 
-        bool                                        m_hasparent;        ///< Whether a parent exists
-        const pandora::CartesianVector*             m_directionbeginpoint;           ///< The point of origin.
-        const pandora::CartesianVector*             m_directionendpoint;           ///< The point of origin.
-        float                                       m_directionprobability;
-    };
-
-    typedef std::vector<EmergingCluster*> EmergingClusterVector;
-
-    /**
      *  @brief Vertex feature info class
      */
     class VertexFeatureInfo
@@ -106,11 +52,12 @@ public:
          *  @param  globalAsymmetry the global asymmetry feature
          *  @param  showerAsymmetry the shower asymmetry feature
          */
-        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float energyKick, const float localAsymmetry,
+        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float energyKick, const float localAsymmetry,
                           const float globalAsymmetry, const float showerAsymmetry);
 
         float    m_beamDeweighting;    ///< The beam deweighting feature
         float    m_rPhiFeature;        ///< The r/phi feature
+        float    m_directionFeature;   ///< The direction feature
         float    m_energyKick;         ///< The energy kick feature
         float    m_localAsymmetry;     ///< The local asymmetry feature
         float    m_globalAsymmetry;    ///< The global asymmetry feature
@@ -321,7 +268,7 @@ private:
      *  @param  pVertex the vertex
      *  @param  vertexFeatureInfoMap the map to populate
      */
-    void PopulateVertexFeatureInfoMap(const BeamConstants &beamConstants, const ClusterListMap &clusterListMap,
+    void PopulateVertexFeatureInfoMap(const BeamConstants &beamConstants, const pandora::ClusterList &clustersW, const ClusterListMap &clusterListMap,
         const SlidingFitDataListMap &slidingFitDataListMap, const ShowerClusterListMap &showerClusterListMap, const KDTreeMap &kdTreeMap,
         const pandora::Vertex *const pVertex, VertexFeatureInfoMap &vertexFeatureInfoMap) const;
 
@@ -388,7 +335,7 @@ private:
      */
     const pandora::Vertex * ProduceTrainingExamples(const pandora::VertexVector &vertexVector, const VertexFeatureInfoMap &vertexFeatureInfoMap,
         std::bernoulli_distribution &coinFlip, std::mt19937 &generator, const std::string &interactionType, const std::string &trainingOutputFile,
-        const LArMvaHelper::MvaFeatureVector &eventFeatureList, const float maxRadius, const bool useRPhi) const;
+        const LArMvaHelper::MvaFeatureVector &eventFeatureList, const float maxRadius, const bool useRPhi, const bool useDirection) const;
 
     /**
      *  @brief  Use the MC information to get the best vertex from a list
@@ -406,7 +353,7 @@ private:
      *  @param  featureVector the vector of floats to append
      *  @param  useRPhi whether to include the r/phi feature
      */
-    void AddVertexFeaturesToVector(const VertexFeatureInfo &vertexFeatureInfo, LArMvaHelper::MvaFeatureVector &featureVector, const bool useRPhi) const;
+    void AddVertexFeaturesToVector(const VertexFeatureInfo &vertexFeatureInfo, LArMvaHelper::MvaFeatureVector &featureVector, const bool useRPhi, const bool useDirection) const;
 
     /**
      *  @brief  Used a binary classifier to compare a set of vertices and pick the best one
@@ -420,7 +367,7 @@ private:
      *  @return address of the best vertex
      */
     const pandora::Vertex * CompareVertices(const pandora::VertexVector &vertexVector, const VertexFeatureInfoMap &vertexFeatureInfoMap,
-        const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi) const;
+        const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi, const bool useDirection) const;
 
     /**
      *  @brief  Used a binary classifier to compare a set of vertices and pick the best one
@@ -435,7 +382,7 @@ private:
      *  @return address of the best vertex
      */
     const pandora::Vertex * ScoreVertices(const pandora::VertexVector &vertexVector, pandora::ClusterList &clusterList, const VertexFeatureInfoMap &vertexFeatureInfoMap,
-        const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi) const;
+        const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi, const bool useDirection) const;
 
     /**
      *  @brief  Populate the final vertex score list using the r/phi score to find the best vertex in the vicinity
@@ -487,14 +434,16 @@ private:
     TrackDirectionTool              *m_pTrackDirectionTool;               ///< The track direction tool 
     DirectionFlowProbabilityTool    *m_pDirectionFlowProbabilityTool;     ///< The direction flow probability tool 
     bool                            m_enableDirection;                    ///< Whether to use directional information to modify the vertex candidate scores
+    int                             m_fileIdentifier;                     ///< File identifier
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline SvmVertexSelectionAlgorithm::VertexFeatureInfo::VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float energyKick,
+inline SvmVertexSelectionAlgorithm::VertexFeatureInfo::VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float energyKick,
     const float localAsymmetry, const float globalAsymmetry, const float showerAsymmetry) :
     m_beamDeweighting(beamDeweighting),
     m_rPhiFeature(rPhiFeature),
+    m_directionFeature(directionFeature),
     m_energyKick(energyKick),
     m_localAsymmetry(localAsymmetry),
     m_globalAsymmetry(globalAsymmetry),
