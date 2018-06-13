@@ -34,6 +34,8 @@ public:
     
     float GetDirectionFlowProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterVector) const;
 
+    int GetNumberConsideredClusters(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterVector) const;
+
 protected:
     pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
@@ -72,6 +74,7 @@ private:
     unsigned int                    m_extrapolationNSteps;              ///< The number of steps used in the sliding fit extrapolation method
     float                           m_extrapolationStepSize;            ///< The extrapolation step size.
     float                           m_minimumClusterLength;             ///< The minimum length a cluster must be in order to be considered
+    float                           m_maxBestChiSquaredPerHit;          ///< The chi squared per hit value above which direction fits are ignored
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------

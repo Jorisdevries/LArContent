@@ -534,7 +534,9 @@ void SvmVertexSelectionAlgorithm::PopulateVertexFeatureInfoMap(const BeamConstan
 
     const double directionFeature(m_pDirectionFlowProbabilityTool->GetDirectionFlowProbability(lambda, vertexProjection, clustersW));
 
-    VertexFeatureInfo vertexFeatureInfo(beamDeweighting, 0.f, directionFeature, energyKick, localAsymmetry, globalAsymmetry, showerAsymmetry);
+    const double directionNClusters(m_pDirectionFlowProbabilityTool->GetNumberConsideredClusters(lambda, vertexProjection, clustersW));
+
+    VertexFeatureInfo vertexFeatureInfo(beamDeweighting, 0.f, directionFeature, directionNClusters, energyKick, localAsymmetry, globalAsymmetry, showerAsymmetry);
     vertexFeatureInfoMap.emplace(pVertex, vertexFeatureInfo);
 }
 
@@ -770,7 +772,10 @@ void SvmVertexSelectionAlgorithm::AddVertexFeaturesToVector(const VertexFeatureI
         featureVector.push_back(static_cast<double>(vertexFeatureInfo.m_rPhiFeature));
 
     if (useDirection)
+    {
         featureVector.push_back(static_cast<double>(vertexFeatureInfo.m_directionFeature));
+        featureVector.push_back(static_cast<double>(vertexFeatureInfo.m_directionNClusters));
+    }
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

@@ -52,12 +52,13 @@ public:
          *  @param  globalAsymmetry the global asymmetry feature
          *  @param  showerAsymmetry the shower asymmetry feature
          */
-        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float energyKick, const float localAsymmetry,
+        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float directionNClusters, const float energyKick, const float localAsymmetry,
                           const float globalAsymmetry, const float showerAsymmetry);
 
         float    m_beamDeweighting;    ///< The beam deweighting feature
         float    m_rPhiFeature;        ///< The r/phi feature
         float    m_directionFeature;   ///< The direction feature
+        float    m_directionNClusters;   ///< The direction feature
         float    m_energyKick;         ///< The energy kick feature
         float    m_localAsymmetry;     ///< The local asymmetry feature
         float    m_globalAsymmetry;    ///< The global asymmetry feature
@@ -439,11 +440,12 @@ private:
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline SvmVertexSelectionAlgorithm::VertexFeatureInfo::VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float energyKick,
+inline SvmVertexSelectionAlgorithm::VertexFeatureInfo::VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float directionNClusters, const float energyKick,
     const float localAsymmetry, const float globalAsymmetry, const float showerAsymmetry) :
     m_beamDeweighting(beamDeweighting),
     m_rPhiFeature(rPhiFeature),
     m_directionFeature(directionFeature),
+    m_directionNClusters(directionNClusters),
     m_energyKick(energyKick),
     m_localAsymmetry(localAsymmetry),
     m_globalAsymmetry(globalAsymmetry),
