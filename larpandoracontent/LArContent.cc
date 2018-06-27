@@ -16,6 +16,7 @@
 #include "larpandoracontent/LArDirection/DirectionClusterSplitting.h"
 #include "larpandoracontent/LArDirection/DirectionAnalysisAlgorithm.h"
 #include "larpandoracontent/LArDirection/DirectionFlowProbabilityTool.h"
+#include "larpandoracontent/LArDirection/EventSelectionAlgorithm.h"
 
 #include "larpandoracontent/LArCheating/CheatingBeamParticleIdTool.h"
 #include "larpandoracontent/LArCheating/CheatingClusterCharacterisationAlgorithm.h"
@@ -181,6 +182,7 @@
 #include "larpandoracontent/LArContent.h"
 
 #define LAR_ALGORITHM_LIST(d)                                                                                                   \
+    d("LArEventSelection",                      EventSelectionAlgorithm)                                                        \
     d("LArDirectionClusterSplitting",           DirectionClusterSplitting)                                                      \
     d("LArDirectionAnalysis",                   DirectionAnalysisAlgorithm)                                                     \
     d("LArEventValidation",                     EventValidationAlgorithm)                                                       \

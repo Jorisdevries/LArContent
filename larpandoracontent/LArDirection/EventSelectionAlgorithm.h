@@ -41,13 +41,15 @@ class EventSelectionAlgorithm : public pandora::Algorithm
     private:
         pandora::StatusCode Run();
 
-        void GetNumberTracksAndShowers(const pandora::PfoList* const pPfoList, int &nTracks, int &nShowers) const;
+        std::string GetInteractionType() const;
+
+        void GetNumberTracksAndShowers(pandora::PfoList pfoList, int &nTracks, int &nShowers) const;
 
         float GetTotalEventCharge(const pandora::CaloHitList *const pCaloHitList) const;
 
-        const pandora::ParticleFlowObject* GetLongestPfo(const pandora::PfoList* pPfoList) const;
+        const pandora::ParticleFlowObject* GetLongestPfo(pandora::PfoList pfoList) const;
 
-        const pandora::ParticleFlowObject* GetShortestPfo(const pandora::PfoList* pPfoList) const;
+        const pandora::ParticleFlowObject* GetShortestPfo(pandora::PfoList pfoList) const;
 
         float GetPfoCharge(const pandora::ParticleFlowObject* pPfo) const;
 
@@ -62,7 +64,7 @@ class EventSelectionAlgorithm : public pandora::Algorithm
         pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
         std::string         m_mcParticleListName;
-        std::string         m_inputHitListName;
+        std::string         m_caloHitListName;
         std::string         m_pfoListName;
         
         bool                m_writeToTree;

@@ -37,29 +37,31 @@ EventSelectionAlgorithm::~EventSelectionAlgorithm()
 StatusCode EventSelectionAlgorithm::Run()
 {
     const MCParticleList *pMCParticleList(nullptr);
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pMCParticleList));
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
 
     const CaloHitList *pCaloHitList(nullptr);
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputHitListName, pCaloHitList));
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_caloHitListName, pCaloHitList));
 
     const PfoList *pPfoList(nullptr);
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_pfoListName, pPfoList));
 
-    //Get interaction type
-    std::string interactionType(LArInteractionTypeHelper::ToString(LArInteractionTypeHelper::GetInteractionType(*pMCParticleList)));
+    PfoList allConnectedPfos;
+    LArPfoHelper::GetAllConnectedPfos(*pPfoList, allConnectedPfos);
 
+    //Get interaction type
+    std::string interactionType(GetInteractionType());
     std::cout << "Interaction type: " << interactionType << std::endl;
 
     //Get number of tracks and showers
     int nTracks(0), nShowers(0);
-    GetNumberTracksAndShowers(pPfoList, nTracks, nShowers);
+    GetNumberTracksAndShowers(allConnectedPfos, nTracks, nShowers);
 
     //Get total event charge
     const float totalEventCharge(GetTotalEventCharge(pCaloHitList));
 
     //Get shortest and longest PFO
-    const pandora::ParticleFlowObject* pLongestPfo(GetLongestPfo(pPfoList));
-    const pandora::ParticleFlowObject* pShortestPfo(GetShortestPfo(pPfoList));
+    const pandora::ParticleFlowObject* pLongestPfo(GetLongestPfo(allConnectedPfos));
+    const pandora::ParticleFlowObject* pShortestPfo(GetShortestPfo(allConnectedPfos));
 
     //Longest and shortest pfo total charges
     const float shortestPfoCharge(GetPfoCharge(pShortestPfo));
@@ -109,9 +111,33 @@ StatusCode EventSelectionAlgorithm::Run()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void EventSelectionAlgorithm::GetNumberTracksAndShowers(const pandora::PfoList* const pPfoList, int &nTracks, int &nShowers) const
+std::string EventSelectionAlgorithm::GetInteractionType() const
 {
-    for (const auto pPfo : *pPfoList)
+    // Extract input collections
+    const MCParticleList *pMCParticleList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
+
+    const CaloHitList *pCaloHitList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_caloHitListName, pCaloHitList));
+
+    // ATTN Assumes single neutrino is parent of all neutrino-induced mc particles
+    LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap;
+    LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, LArMCParticleHelper::PrimaryParameters(),
+        LArMCParticleHelper::IsBeamNeutrinoFinalState, nuMCParticlesToGoodHitsMap);
+
+    MCParticleList mcPrimaryList;
+    for (const auto &mapEntry : nuMCParticlesToGoodHitsMap) mcPrimaryList.push_back(mapEntry.first);
+    mcPrimaryList.sort(LArMCParticleHelper::SortByMomentum);
+
+    const LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(mcPrimaryList));
+    return LArInteractionTypeHelper::ToString(interactionType);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventSelectionAlgorithm::GetNumberTracksAndShowers(pandora::PfoList pfoList, int &nTracks, int &nShowers) const
+{
+    for (const auto pPfo : pfoList)
     {
         if (LArPfoHelper::IsTrack(pPfo))
             ++nTracks;
@@ -135,13 +161,16 @@ float EventSelectionAlgorithm::GetTotalEventCharge(const pandora::CaloHitList *c
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-const pandora::ParticleFlowObject* EventSelectionAlgorithm::GetLongestPfo(const pandora::PfoList* pPfoList) const
+const pandora::ParticleFlowObject* EventSelectionAlgorithm::GetLongestPfo(pandora::PfoList pfoList) const
 {
     float longestPfoLength(0.f);
     const pandora::ParticleFlowObject* pLongestPfo = NULL;
 
-    for (const auto pPfo : *pPfoList)
+    for (const auto pPfo : pfoList)
     {
+        if (!LArPfoHelper::IsThreeD(pPfo))
+            continue;
+
         if (LArPfoHelper::GetThreeDLengthSquared(pPfo) > longestPfoLength)
         {
             pLongestPfo = pPfo;
@@ -159,13 +188,16 @@ const pandora::ParticleFlowObject* EventSelectionAlgorithm::GetLongestPfo(const 
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-const pandora::ParticleFlowObject* EventSelectionAlgorithm::GetShortestPfo(const pandora::PfoList* pPfoList) const
+const pandora::ParticleFlowObject* EventSelectionAlgorithm::GetShortestPfo(pandora::PfoList pfoList) const
 {
     float shortestPfoLength(1e6);
     const pandora::ParticleFlowObject* pShortestPfo = NULL;
 
-    for (const auto pPfo : *pPfoList)
+    for (const auto pPfo : pfoList)
     {
+        if (!LArPfoHelper::IsThreeD(pPfo))
+            continue;
+
         if (LArPfoHelper::GetThreeDLengthSquared(pPfo) < shortestPfoLength)
         {
             pShortestPfo = pPfo;
@@ -218,6 +250,9 @@ float EventSelectionAlgorithm::GetPfoOpeningAngle(const pandora::ParticleFlowObj
 
     LArTrackStateVector trackStateVector2; 
     LArPfoHelper::GetSlidingFitTrajectory(pPfo2, LArPfoHelper::GetVertex(pPfo2), 20, LArGeometryHelper::GetWireZPitch(this->GetPandora()), trackStateVector2);
+
+    if (trackStateVector1.size() == 0 || trackStateVector2.size() == 0)
+        return 0.f;
 
     const pandora::CartesianVector vertexDirection1(trackStateVector1.front().GetDirection());
     const pandora::CartesianVector vertexDirection2(trackStateVector2.front().GetDirection());
@@ -272,7 +307,7 @@ StatusCode EventSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
     "MCParticleListName", m_mcParticleListName));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-    "InputHitListName", m_inputHitListName));
+    "CaloHitListName", m_caloHitListName));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
     "PfoListName", m_pfoListName));
