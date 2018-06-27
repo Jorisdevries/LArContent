@@ -117,6 +117,25 @@ public:
 
     typedef std::vector<HitCharge> HitChargeVector;
 
+    class FitParameters
+    {
+        public:
+        
+            FitParameters();
+            FitParameters(float parameterZero, float parameterOne, float parameterTwo, float parameterThree);
+
+            float GetParameterZero();
+            float GetParameterOne();
+            float GetParameterTwo();
+            float GetParameterThree();
+
+        private:
+            float   m_parameterzero;
+            float   m_parameterone;
+            float   m_parametertwo;
+            float   m_parameterthree;
+    };
+
     class SplitObject
     {
     public:
@@ -243,6 +262,9 @@ public:
         void SetMCDirection(int direction);
         int GetMCDirection();
 
+        void SetFitParameters(FitParameters &fitParameters);
+        FitParameters GetFitParameters();
+
         void Print();
 
     private:
@@ -271,6 +293,8 @@ public:
         SplitObject         m_splitobject;
         SplitObject         m_tefobject;
         SplitObject         m_frobject;
+
+        FitParameters       m_fitparameters;
     };
 
     class JumpObject
@@ -391,7 +415,7 @@ public:
 
     void SetGlobalMinuitPreliminaries(HitChargeVector &hitChargeVector);
 
-    void PerformFits(HitChargeVector &hitChargeVector, HitChargeVector &forwardsFitPoints, HitChargeVector &backwardsFitPoints, int numberHitsToConsider, float &forwardsChiSquared, float &backwardsChiSquared, int &fitStatus1, int &fitStatus2);
+    void PerformFits(HitChargeVector &hitChargeVector, HitChargeVector &forwardsFitPoints, HitChargeVector &backwardsFitPoints, int numberHitsToConsider, float &forwardsChiSquared, float &backwardsChiSquared, int &fitStatus1, int &fitStatus2, FitParameters &fitParameters);
 
     void GetCalorimetricDirection(const pandora::Cluster* pTargetClusterW, DirectionFitObject &finalDirectionFitObject);
 
@@ -604,6 +628,54 @@ inline float TrackDirectionTool::HitCharge::GetBackwardsChiSquared()
 {
     return m_backwardschisquared;
 }
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline TrackDirectionTool::FitParameters::FitParameters() :
+    m_parameterzero(0.f),
+    m_parameterone(0.f),
+    m_parametertwo(0.f),
+    m_parameterthree(0.f)
+{
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline TrackDirectionTool::FitParameters::FitParameters(float parameterZero, float parameterOne, float parameterTwo, float parameterThree) :
+    m_parameterzero(parameterZero),
+    m_parameterone(parameterOne),
+    m_parametertwo(parameterTwo),
+    m_parameterthree(parameterThree)
+{
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float TrackDirectionTool::FitParameters::GetParameterZero()
+{
+    return m_parameterzero;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float TrackDirectionTool::FitParameters::GetParameterOne()
+{
+    return m_parameterone;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float TrackDirectionTool::FitParameters::GetParameterTwo()
+{
+    return m_parametertwo;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float TrackDirectionTool::FitParameters::GetParameterThree()
+{
+    return m_parameterthree;
+}
+
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 inline TrackDirectionTool::SplitObject::SplitObject() :
@@ -1195,6 +1267,20 @@ inline int TrackDirectionTool::DirectionFitObject::GetMCDirection()
     //    std::cout << "MC information not available." << std::endl;
 
     return m_mcdirection;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline void TrackDirectionTool::DirectionFitObject::SetFitParameters(TrackDirectionTool::FitParameters &fitParameters)
+{
+    m_fitparameters = fitParameters;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline TrackDirectionTool::FitParameters TrackDirectionTool::DirectionFitObject::GetFitParameters()
+{
+    return m_fitparameters;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

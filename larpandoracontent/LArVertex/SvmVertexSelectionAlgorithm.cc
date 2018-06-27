@@ -55,7 +55,8 @@ SvmVertexSelectionAlgorithm::SvmVertexSelectionAlgorithm() :
     m_maxTrueVertexRadius(1.f),
     m_useRPhiFeatureForRegion(false),
     m_dropFailedRPhiFastScoreCandidates(true),
-    m_enableDirection(true),
+    m_enableDirectionFeatures(true), //whether to enable direction features
+    m_directionScoreReweighting(false),
     m_fileIdentifier(1)
 {
 }
@@ -162,24 +163,24 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
         // Use svm to choose the region.
         const Vertex* pBestRegionVertex;
 
-        if (m_enableDirection)
+        if (m_directionScoreReweighting)
         {
             try
             {
                 pBestRegionVertex = this->ScoreVertices(bestRegionVertices, clustersW, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
-                m_useRPhiFeatureForRegion, m_enableDirection);
+                m_useRPhiFeatureForRegion, m_enableDirectionFeatures);
             }
             catch (...)
             {
                 std::cout << "Something went wrong, reverting to normal vertex region selection." << std::endl;
 
                 pBestRegionVertex = this->CompareVertices(bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
-                m_useRPhiFeatureForRegion, m_enableDirection);
+                m_useRPhiFeatureForRegion, m_enableDirectionFeatures);
             }
         }
         else
             pBestRegionVertex = this->CompareVertices(bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
-            m_useRPhiFeatureForRegion, m_enableDirection);
+            m_useRPhiFeatureForRegion, m_enableDirectionFeatures);
 
         // Get all the vertices in the best region.
         VertexVector regionalVertices{pBestRegionVertex};
@@ -606,7 +607,7 @@ void SvmVertexSelectionAlgorithm::ProduceTrainingSets(const VertexVector &vertex
 
     // Produce training examples for the vertices representing regions.
     const Vertex *const pBestRegionVertex(this->ProduceTrainingExamples(bestRegionVertices, vertexFeatureInfoMap, coinFlip, generator,
-        interactionType, m_trainingOutputFileRegion, eventFeatureList, m_regionRadius, m_useRPhiFeatureForRegion, m_enableDirection));
+        interactionType, m_trainingOutputFileRegion, eventFeatureList, m_regionRadius, m_useRPhiFeatureForRegion, m_enableDirectionFeatures));
 
     // Get all the vertices in the best region.
     VertexVector regionalVertices{pBestRegionVertex};
@@ -995,7 +996,10 @@ StatusCode SvmVertexSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
         "DropFailedRPhiFastScoreCandidates", m_dropFailedRPhiFastScoreCandidates));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "EnableDirection", m_enableDirection));
+        "EnableDirectionFeatures", m_enableDirectionFeatures));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "DirectionScoreReweighting", m_directionScoreReweighting));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "FileIdentifier", m_fileIdentifier));

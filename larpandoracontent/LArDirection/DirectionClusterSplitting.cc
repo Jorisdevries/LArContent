@@ -24,7 +24,7 @@ namespace lar_content
 DirectionClusterSplitting::DirectionClusterSplitting() :
     m_minClusterCaloHits(50),
     m_minClusterLengthSquared(30.f * 30.f),
-    m_enableDirection(true)
+    m_directionClusterSplitting(true)
 {
 }
 
@@ -32,7 +32,7 @@ DirectionClusterSplitting::DirectionClusterSplitting() :
 
 StatusCode DirectionClusterSplitting::Run()
 {
-    if (!m_enableDirection)
+    if (!m_directionClusterSplitting)
         return STATUS_CODE_SUCCESS;
 
     //this->CountClusters();
@@ -317,7 +317,7 @@ StatusCode DirectionClusterSplitting::ReadSettings(const TiXmlHandle xmlHandle)
     m_minClusterLengthSquared = minClusterLength * minClusterLength;
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "EnableDirection", m_enableDirection));
+        "DirectionClusterSplitting", m_directionClusterSplitting));
 
     AlgorithmTool *pAlgorithmTool(nullptr);
 

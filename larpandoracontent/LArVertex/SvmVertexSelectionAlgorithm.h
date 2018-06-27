@@ -434,7 +434,8 @@ private:
 
     TrackDirectionTool              *m_pTrackDirectionTool;               ///< The track direction tool 
     DirectionFlowProbabilityTool    *m_pDirectionFlowProbabilityTool;     ///< The direction flow probability tool 
-    bool                            m_enableDirection;                    ///< Whether to use directional information to modify the vertex candidate scores
+    bool                            m_enableDirectionFeatures;            ///< Whether to use directional information as an SVM feature 
+    bool                            m_directionScoreReweighting;          ///< Whether to use direction flow probability to directly reweight the vertex scores
     int                             m_fileIdentifier;                     ///< File identifier
 };
 

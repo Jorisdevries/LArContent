@@ -47,6 +47,8 @@ private:
 
     void DaughtersDirectionFlowContribution(pandora::ClusterVector &daughterClusters, const pandora::Cluster* const pPrimaryCluster, const pandora::CartesianVector &vertexProjection, float &accumulatedProbability) const;
 
+    float GetSmoothProbability(float probability, pandora::CartesianVector beginPoint, pandora::CartesianVector endPoint, pandora::CartesianVector vertexProjection) const;
+
     float GetSmallestClusterLength(pandora::ClusterVector &inputClusterVector) const;
     
     void SelectClusters(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::ClusterList &clusterList, pandora::ClusterVector &selectedClusterVector) const;
@@ -75,6 +77,7 @@ private:
     float                           m_extrapolationStepSize;            ///< The extrapolation step size.
     float                           m_minimumClusterLength;             ///< The minimum length a cluster must be in order to be considered
     float                           m_maxBestChiSquaredPerHit;          ///< The chi squared per hit value above which direction fits are ignored
+    bool                            m_enableVisualisation;              ///< Whether to visualise primary/secondary emerging clusters and their direction fits
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------

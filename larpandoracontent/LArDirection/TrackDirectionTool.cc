@@ -1337,7 +1337,8 @@ void TrackDirectionTool::FitHitChargeVector(HitChargeVector &hitChargeVector, Tr
     float particleForwardsChiSquared(0.f), particleBackwardsChiSquared(0.f);
     int numberHits(std::min(2 * numberHitsToConsider, (int)hitChargeVector.size())), particleForwardsFitStatus(-1), particleBackwardsFitStatus(-1);
     HitChargeVector forwardsFitPoints, backwardsFitPoints;
-    this->PerformFits(hitChargeVector, forwardsFitPoints, backwardsFitPoints, numberHitsToConsider, particleForwardsChiSquared, particleBackwardsChiSquared, particleForwardsFitStatus, particleBackwardsFitStatus);
+    FitParameters fitParameters;
+    this->PerformFits(hitChargeVector, forwardsFitPoints, backwardsFitPoints, numberHitsToConsider, particleForwardsChiSquared, particleBackwardsChiSquared, particleForwardsFitStatus, particleBackwardsFitStatus, fitParameters);
 
     float mean_dEdx(0.f);
     HitChargeVector thisHitChargeVector = hitChargeVector;
@@ -1455,7 +1456,7 @@ void TrackDirectionTool::SetGlobalMinuitPreliminaries(HitChargeVector &hitCharge
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
-void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitChargeVector &forwardsFitPoints, HitChargeVector &backwardsFitPoints, int numberHitsToConsider, float &forwardsChiSquared, float &backwardsChiSquared, int &fitStatus1, int &fitStatus2)
+void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitChargeVector &forwardsFitPoints, HitChargeVector &backwardsFitPoints, int numberHitsToConsider, float &forwardsChiSquared, float &backwardsChiSquared, int &fitStatus1, int &fitStatus2, FitParameters &fitParameters)
 {
     this->SetGlobalMinuitPreliminaries(hitChargeVector);
 
@@ -1599,6 +1600,19 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
         }
 
         nHitsConsidered++;
+    }
+
+    if (forwardsChiSquared <= backwardsChiSquared)
+    {
+        float parameterZero(outpar[0]), parameterOne(outpar[1]), parameterTwo(outpar[2]), parameterThree(outpar[3]);
+        FitParameters bestFitParameters(parameterZero, parameterOne, parameterTwo, parameterThree);
+        fitParameters = bestFitParameters;
+    }
+    else
+    {
+        float parameterZero(outpar2[0]), parameterOne(outpar2[1]), parameterTwo(outpar2[2]), parameterThree(outpar2[3]);
+        FitParameters bestFitParameters(parameterZero, parameterOne, parameterTwo, parameterThree);
+        fitParameters = bestFitParameters;
     }
 
     std::sort(forwardsFitPoints.begin(), forwardsFitPoints.end(), SortHitChargeVectorByRL);
