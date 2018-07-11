@@ -308,6 +308,15 @@ private:
     pandora::StatusCode Run();
 
     /**
+     *  @brief Gets the vertex offset in 3 dimensions w.r.t. the true MC interaction vertex 
+     *
+     *  @param  pMCParticleList the MC particle list 
+     *  @param  pVertex the vertex 
+     *  @param  enableSpaceChargeCorrection whether to enable SCE 
+     */
+    float GetVertexDR(const pandora::MCParticleList *pMCParticleList, const pandora::Vertex* const pVertex, bool enableSpaceChargeCorrection);
+
+    /**
      *  @brief  Initialize kd trees with details of hits in algorithm-configured cluster lists
      *
      *  @param  kdTreeU the kd tree for u hits
@@ -387,6 +396,9 @@ private:
 
     bool                    m_isEmptyViewAcceptable;        ///< Whether views entirely empty of hits are classed as 'acceptable' for candidate filtration
     unsigned int            m_minVertexAcceptableViews;     ///< The minimum number of views in which a candidate must sit on/near a hit or in a gap (or view can be empty)
+
+    bool                    m_cheatVertexSelection;         ///< Whether to cheat the vertex selection
+    std::string             m_mcParticleListName;           ///< For cheating the vertex selection
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------

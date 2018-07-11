@@ -52,11 +52,12 @@ public:
          *  @param  globalAsymmetry the global asymmetry feature
          *  @param  showerAsymmetry the shower asymmetry feature
          */
-        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float directionNClusters, const float energyKick, const float localAsymmetry,
+        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float intersectionFeature, const float directionFeature, const float directionNClusters, const float energyKick, const float localAsymmetry,
                           const float globalAsymmetry, const float showerAsymmetry);
 
         float    m_beamDeweighting;    ///< The beam deweighting feature
         float    m_rPhiFeature;        ///< The r/phi feature
+        float    m_intersectionFeature;
         float    m_directionFeature;   ///< The direction feature
         float    m_directionNClusters;   ///< The direction feature
         float    m_energyKick;         ///< The energy kick feature
@@ -312,6 +313,16 @@ private:
      */
     void CalculateRPhiScores(pandora::VertexVector &vertexVector, VertexFeatureInfoMap &vertexFeatureInfoMap, const KDTreeMap &kdTreeMap) const;
 
+    void CalculateIntersectionScores(pandora::VertexVector &vertexVector, VertexFeatureInfoMap &vertexFeatureInfoMap, pandora::ClusterList &clusterList) const;
+
+    pandora::CartesianVector GetIntersectionPoint(pandora::ClusterList &clusterList) const;
+
+    void GetTwoLargestClusters(pandora::ClusterList &clusterList, pandora::ClusterList &twoLargestClusters) const;
+
+    static bool ClusterLengthComparison(const pandora::Cluster *const pCluster1, const pandora::Cluster *const pCluster2);
+
+    void GetSpacepoints(const pandora::Cluster *const pCluster, pandora::CartesianPointVector &spacepoints) const;
+
     /**
      *  @brief  Get the interaction type string
      *
@@ -385,6 +396,8 @@ private:
     const pandora::Vertex * ScoreVertices(const pandora::VertexVector &vertexVector, pandora::ClusterList &clusterList, const VertexFeatureInfoMap &vertexFeatureInfoMap,
         const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi, const bool useDirection) const;
 
+    float GetVertexDR(const pandora::Vertex* const pVertex, bool enableSpaceChargeCorrection) const;
+
     /**
      *  @brief  Populate the final vertex score list using the r/phi score to find the best vertex in the vicinity
      *
@@ -434,17 +447,22 @@ private:
 
     TrackDirectionTool              *m_pTrackDirectionTool;               ///< The track direction tool 
     DirectionFlowProbabilityTool    *m_pDirectionFlowProbabilityTool;     ///< The direction flow probability tool 
+    bool                            m_enableIntersectionFeatures;
     bool                            m_enableDirectionFeatures;            ///< Whether to use directional information as an SVM feature 
     bool                            m_directionScoreReweighting;          ///< Whether to use direction flow probability to directly reweight the vertex scores
+    bool                            m_onlyCorrectDirection;               ///< Whether to outright discard vertex candidates at the wrong side of the track
+    unsigned int                    m_extrapolationNSteps;              ///< The number of steps used in the sliding fit extrapolation method
+    float                           m_extrapolationStepSize;            ///< The extrapolation step size.
     int                             m_fileIdentifier;                     ///< File identifier
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline SvmVertexSelectionAlgorithm::VertexFeatureInfo::VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float directionNClusters, const float energyKick,
+inline SvmVertexSelectionAlgorithm::VertexFeatureInfo::VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float intersectionFeature, const float directionFeature, const float directionNClusters, const float energyKick,
     const float localAsymmetry, const float globalAsymmetry, const float showerAsymmetry) :
     m_beamDeweighting(beamDeweighting),
     m_rPhiFeature(rPhiFeature),
+    m_intersectionFeature(intersectionFeature),
     m_directionFeature(directionFeature),
     m_directionNClusters(directionNClusters),
     m_energyKick(energyKick),

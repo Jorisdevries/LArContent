@@ -9,6 +9,8 @@
 
 #include "larpandoracontent/LArHelpers/LArClusterHelper.h"
 #include "larpandoracontent/LArHelpers/LArGeometryHelper.h"
+#include "larpandoracontent/LArHelpers/LArSpaceChargeHelper.h"
+#include "larpandoracontent/LArHelpers/LArMCParticleHelper.h"
 
 #include "larpandoracontent/LArUtility/KDTreeLinkerAlgoT.h"
 
@@ -31,7 +33,8 @@ VertexSelectionBaseAlgorithm::VertexSelectionBaseAlgorithm() :
     m_useDetectorGaps(true),
     m_gapTolerance(0.f),
     m_isEmptyViewAcceptable(true),
-    m_minVertexAcceptableViews(3)
+    m_minVertexAcceptableViews(3),
+    m_cheatVertexSelection(false)
 {
 }
 
@@ -40,6 +43,15 @@ VertexSelectionBaseAlgorithm::VertexSelectionBaseAlgorithm() :
 void VertexSelectionBaseAlgorithm::FilterVertexList(const VertexList *const pInputVertexList, HitKDTree2D &kdTreeU, HitKDTree2D &kdTreeV,
     HitKDTree2D &kdTreeW, VertexVector &filteredVertices) const
 {
+    /*
+    (void) kdTreeU;
+    (void) kdTreeV;
+    (void) kdTreeW;
+
+    for (const Vertex *const pVertex : *pInputVertexList)
+        filteredVertices.push_back(pVertex);
+    */
+
     for (const Vertex *const pVertex : *pInputVertexList)
     {
         unsigned int nAcceptableViews(0);
@@ -150,6 +162,38 @@ StatusCode VertexSelectionBaseAlgorithm::Run()
         return STATUS_CODE_SUCCESS;
     }
 
+    VertexList selectedVertexList;
+
+    const MCParticleList *pMCParticleList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
+
+    if (m_cheatVertexSelection)
+    {
+        std::cout << "The vertex selection is being cheated." << std::endl;
+
+        float smallestVertexDR(1e6);
+
+        for (const auto pVertex: *pInputVertexList)
+        {
+            if (std::abs(this->GetVertexDR(pMCParticleList, pVertex, true)  - 0.5) < smallestVertexDR) //MC-reco offset is 0.5
+            {
+                smallestVertexDR = this->GetVertexDR(pMCParticleList, pVertex, true);
+                selectedVertexList.clear();
+                selectedVertexList.push_back(pVertex);
+            }
+        }
+
+        if (!selectedVertexList.empty())
+        {
+            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList(*this, m_outputVertexListName, selectedVertexList));
+
+            if (m_replaceCurrentVertexList)
+                PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ReplaceCurrentList<Vertex>(*this, m_outputVertexListName));
+        }
+
+        return STATUS_CODE_SUCCESS;
+    }
+
     HitKDTree2D kdTreeU, kdTreeV, kdTreeW;
     this->InitializeKDTrees(kdTreeU, kdTreeV, kdTreeW);
 
@@ -165,8 +209,11 @@ StatusCode VertexSelectionBaseAlgorithm::Run()
     VertexScoreList vertexScoreList;
     this->GetVertexScoreList(filteredVertices, beamConstants, kdTreeU, kdTreeV, kdTreeW, vertexScoreList);
 
-    VertexList selectedVertexList;
     this->SelectTopScoreVertices(vertexScoreList, selectedVertexList);
+
+    std::cout << "selectedVertexList.size(): " << selectedVertexList.size() << std::endl;
+    std::cout << "-----> Vertex DR: " << this->GetVertexDR(pMCParticleList, selectedVertexList.front(), true) << std::endl; 
+    std::cout << "(" << selectedVertexList.front()->GetPosition().GetX() << ", " << selectedVertexList.front()->GetPosition().GetY() << ", " << selectedVertexList.front()->GetPosition().GetZ() << ")" << std::endl;
 
     if (!selectedVertexList.empty())
     {
@@ -177,6 +224,25 @@ StatusCode VertexSelectionBaseAlgorithm::Run()
     }
 
     return STATUS_CODE_SUCCESS;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float VertexSelectionBaseAlgorithm::GetVertexDR(const pandora::MCParticleList *pMCParticleList, const pandora::Vertex* const pVertex, bool enableSpaceChargeCorrection)
+{
+    pandora::MCParticleVector trueNeutrinos;
+    LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
+
+    if (trueNeutrinos.size() != 1)
+        return -1.f;
+
+    CartesianVector trueVertexPosition(trueNeutrinos.front()->GetVertex());
+    CartesianVector vertexCandidatePosition(pVertex->GetPosition());
+    
+    if (enableSpaceChargeCorrection)
+        vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
+
+    return (vertexCandidatePosition - trueVertexPosition).GetMagnitude();
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -348,6 +414,8 @@ pandora::CartesianPointVector VertexSelectionBaseAlgorithm::ShowerCluster::GetCl
 
 StatusCode VertexSelectionBaseAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 {
+    LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
+
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadVectorOfValues(xmlHandle,
         "InputCaloHitListNames", m_inputCaloHitListNames));
 
@@ -389,6 +457,12 @@ StatusCode VertexSelectionBaseAlgorithm::ReadSettings(const TiXmlHandle xmlHandl
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "MinVertexAcceptableViews", m_minVertexAcceptableViews));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "CheatVertexSelection", m_cheatVertexSelection));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "MCParticleListName", m_mcParticleListName));
 
     return STATUS_CODE_SUCCESS;
 }

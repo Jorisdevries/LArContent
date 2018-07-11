@@ -38,8 +38,8 @@ namespace lar_content
 
 TrackDirectionTool::TrackDirectionTool() :
     m_slidingFitWindow(20),
-    m_minClusterCaloHits(50),
-    m_minClusterLength(10.f),
+    m_minClusterCaloHits(20),
+    m_minClusterLength(5.f),
     m_numberTrackEndHits(100000),
     m_enableFragmentRemoval(true),
     m_enableSplitting(true),
@@ -68,6 +68,12 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
 {
     try
     {
+        if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits)
+        {
+            std::cout << "Not enough hits" << std::endl;
+            throw STATUS_CODE_FAILURE;
+        }
+
         if (globalMuonLookupTable.GetMap().empty())
             this->SetLookupTable();
 
@@ -469,6 +475,9 @@ void TrackDirectionTool::SimpleTrackEndFilter(HitChargeVector &hitChargeVector)
     //Get track length and Q over W span for last step
     float trackLength(0.f), minQoverW(1e6), maxQoverW(0.f);
     this->GetTrackLength(hitChargeVector, trackLength);
+
+    if (trackLength == 0)
+        return;
 
     for (HitCharge &hitCharge : hitChargeVector)
     {
@@ -877,7 +886,10 @@ void TrackDirectionTool::GetTrackLength(HitChargeVector &hitChargeVector, float 
 {
     trackLength = 0.f;
 
-    for (HitCharge &hitCharge : hitChargeVector)
+    if (hitChargeVector.size() == 0)
+        return;
+
+    for (const auto hitCharge : hitChargeVector)
     {
         if (hitCharge.GetLongitudinalPosition() > trackLength)
             trackLength = hitCharge.GetLongitudinalPosition();
@@ -1351,6 +1363,7 @@ void TrackDirectionTool::FitHitChargeVector(HitChargeVector &hitChargeVector, Tr
     std::sort(backwardsFitPoints.begin(), backwardsFitPoints.end(), SortHitChargeVectorByRL);
 
     DirectionFitObject finalDirectionFitObject(thisHitChargeVector, forwardsFitPoints, backwardsFitPoints, numberHits, mean_dEdx, particleForwardsChiSquared, particleBackwardsChiSquared);
+    finalDirectionFitObject.SetFitParameters(fitParameters);
 
     SplitObject tefObject(fitResult.GetTEFObject());
     finalDirectionFitObject.SetTEFObject(tefObject);
@@ -1469,9 +1482,9 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
 
     const int nParameters = 4;
     const std::string parName[nParameters]   = {"ENDENERGY", "SCALE", "MASS", "EXTRA"};
-    const double vstart[nParameters] = {2.1, 1.0, 1.0, 1.0};
+    const double vstart[nParameters] = {10.1, 1.0, 110.0, 1.0};
     const double step[nParameters] = {1.e-1, 1.e-1, 1.e-1, 1.e-1};
-    const double lowphysbound[nParameters] = {2.0, 0.01, 105.0, 0.1};
+    const double lowphysbound[nParameters] = {10.0, 0.01, 105.0, 0.1};
     const double highphysbound[nParameters] = {1.0e3, maxScale, 1.0e3, 1.0e1};
 
     int ierflg(0);
@@ -1500,9 +1513,9 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
 
     const int nParameters2 = 4;
     const std::string parName2[nParameters2]   = {"ENDENERGY", "SCALE", "MASS", "EXTRA"};
-    const double vstart2[nParameters2] = {2.1, 1.0, 1.0, 1.0};
+    const double vstart2[nParameters2] = {10.1, 1.0, 110.0, 1.0};
     const double step2[nParameters2] = {1.e-1, 1.e-1, 1.e-1, 1.e-1};
-    const double lowphysbound2[nParameters2] = {2.0, 0.01, 105.0, 0.1};
+    const double lowphysbound2[nParameters2] = {10.0, 0.01, 105.0, 0.1};
     const double highphysbound2[nParameters2] = {1.0e3, maxScale, 1.0e3, 1.0e1};
 
     int ierflg2(0);
@@ -1570,6 +1583,14 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
 
         float f_sigma(std::sqrt((0.00164585 * f_dEdx_2D * f_dEdx_2D) + (0.0201838 * f_dEdx_2D))); //80%
         float b_sigma(std::sqrt((0.00164585 * b_dEdx_2D * b_dEdx_2D) + (0.0201838 * b_dEdx_2D))); //80%
+
+        /*
+        std::cout << "Hit Q/w: " << hitCharge.GetChargeOverWidth() << std::endl; 
+        std::cout << "Hit f_dEdx_2D: " << f_dEdx_2D << std::endl; 
+        std::cout << "Hit f_sigma: " << f_sigma << std::endl; 
+        std::cout << "Hit offset: " << backwardsDelta << std::endl; 
+        std::cout << "------------------" << std::endl;
+        */
 
         float lp(hitCharge.GetLongitudinalPosition()), hw(hitCharge.GetHitWidth());
         float f_Q_fit_f(Q_fit_f), f_Q_fit_b(Q_fit_b);

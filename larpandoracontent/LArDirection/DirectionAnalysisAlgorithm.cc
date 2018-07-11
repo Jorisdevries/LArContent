@@ -10,6 +10,7 @@
 
 #include "larpandoracontent/LArHelpers/LArClusterHelper.h"
 #include "larpandoracontent/LArHelpers/LArGeometryHelper.h"
+#include "larpandoracontent/LArHelpers/LArInteractionTypeHelper.h"
 #include "larpandoracontent/LArHelpers/LArMCParticleHelper.h"
 #include "larpandoracontent/LArObjects/LArMCParticle.h"
 
@@ -82,7 +83,6 @@ StatusCode DirectionAnalysisAlgorithm::Run()
 
     pandora::PfoList allPfos;
     LArPfoHelper::GetAllConnectedPfos(*pPfoList, allPfos);
-
     pandora::PfoVector pfoVector(allPfos.begin(), allPfos.end());
 
     const pandora::Vertex* const pNeutrinoVertex(pVertexList->front());
@@ -90,10 +90,7 @@ StatusCode DirectionAnalysisAlgorithm::Run()
     pandora::MCParticleVector trueNeutrinos;
     LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
 
-    if (trueNeutrinos.size() != 1)
-        return STATUS_CODE_SUCCESS;
-
-    if (LArMCParticleHelper::GetNuanceCode((*(trueNeutrinos.begin()))) != 1001) 
+    if (trueNeutrinos.size() != 1 || pVertexList->size() != 1)
         return STATUS_CODE_SUCCESS;
 
     //pandora::CaloHitVector hitVector(pCaloHitList->begin(), pCaloHitList->end());
@@ -109,7 +106,7 @@ StatusCode DirectionAnalysisAlgorithm::Run()
     this->WriteClusterAndHitInformation(clusterVector);
 
     if (!m_cosmic)
-        this->WriteVertexInformation(pMCParticleList, pCaloHitList, pNeutrinoVertex, pfoVector);
+        this->WriteVertexInformation(pMCParticleList, pNeutrinoVertex);
     
     return STATUS_CODE_SUCCESS;
 }
@@ -177,23 +174,58 @@ void DirectionAnalysisAlgorithm::CheckEventType(const pandora::MCParticleList *p
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void DirectionAnalysisAlgorithm::WriteVertexInformation(const pandora::MCParticleList *pMCParticleList, const pandora::CaloHitList *pCaloHitList, const pandora::Vertex* const pVertex, pandora::PfoVector &pfoVector)
+int DirectionAnalysisAlgorithm::GetInteractionType() const
 {
-    int nMuons(0), nProtons(0), nOthers(0), nPFOs(0);
-    this->CheckEventType(pMCParticleList, pCaloHitList, pfoVector, nMuons, nProtons, nOthers, nPFOs);
+    // Extract input collections
+    const MCParticleList *pMCParticleList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
+
+    const CaloHitList *pCaloHitList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputHitListName, pCaloHitList));
+
+    // ATTN Assumes single neutrino is parent of all neutrino-induced mc particles
+    LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap;
+    LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, LArMCParticleHelper::PrimaryParameters(),
+        LArMCParticleHelper::IsBeamNeutrinoFinalState, nuMCParticlesToGoodHitsMap);
+
+    MCParticleList mcPrimaryList;
+    for (const auto &mapEntry : nuMCParticlesToGoodHitsMap) mcPrimaryList.push_back(mapEntry.first);
+    mcPrimaryList.sort(LArMCParticleHelper::SortByMomentum);
+
+    if (mcPrimaryList.size() == 0)
+        return -1; 
+
+    const LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(mcPrimaryList));
+    //return LArInteractionTypeHelper::ToString(interactionType);
+    return static_cast<int>(static_cast<unsigned int>(interactionType));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void DirectionAnalysisAlgorithm::WriteVertexInformation(const pandora::MCParticleList *pMCParticleList, const pandora::Vertex* const pVertex)
+{
+    int interactionType(GetInteractionType());    
 
     float vertexDR(this->GetVertexDR(pMCParticleList, pVertex, false));
     float sccVertexDR(this->GetVertexDR(pMCParticleList, pVertex, true));
 
-    std::cout << "Vertex DR: " << vertexDR << std::endl;
+    //std::cout << "Vertex DR: " << vertexDR << std::endl;
     std::cout << "SCE Vertex DR: " << sccVertexDR << std::endl;
+    std::cout << "(" << pVertex->GetPosition().GetX() << ", " << pVertex->GetPosition().GetY() << ", " << pVertex->GetPosition().GetZ() << ")" << std::endl;
 
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "nMuons", nMuons));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "nProtons", nProtons));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "nOthers", nOthers));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "nPFOs", nPFOs));
+    float longestMCLength(0.f);
+
+    for (const auto pMCParticle : *pMCParticleList)
+    {
+        if ((pMCParticle->GetVertex() - pMCParticle->GetEndpoint()).GetMagnitude() > longestMCLength)
+            longestMCLength = (pMCParticle->GetVertex() - pMCParticle->GetEndpoint()).GetMagnitude();
+    }
+
+
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "interactionType", interactionType));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "VertexDR", vertexDR));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "SCCVertexDR", sccVertexDR));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "MCLength", longestMCLength));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "FileIdentifier", m_fileIdentifier));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "EventNumber", m_eventNumber));
     PANDORA_MONITORING_API(FillTree(this->GetPandora(), vertexTreeName.c_str()));
@@ -203,6 +235,7 @@ void DirectionAnalysisAlgorithm::WriteVertexInformation(const pandora::MCParticl
 
 float DirectionAnalysisAlgorithm::GetVertexDR(const pandora::MCParticleList *pMCParticleList, const pandora::Vertex* const pVertex, bool enableSpaceChargeCorrection)
 {
+    /*
     CartesianVector trueVertexPosition(0.f, 0.f, 0.f);
 
     for (auto pMCParticle : *pMCParticleList)
@@ -210,7 +243,15 @@ float DirectionAnalysisAlgorithm::GetVertexDR(const pandora::MCParticleList *pMC
         if (pMCParticle->GetParticleId() == 13 && LArMCParticleHelper::IsPrimary(pMCParticle) && pMCParticle->GetVertex().GetY() != 0)
             trueVertexPosition = pMCParticle->GetVertex();
     }
+    */
 
+    pandora::MCParticleVector trueNeutrinos;
+    LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
+
+    if (trueNeutrinos.size() != 1)
+        throw STATUS_CODE_FAILURE;
+
+    CartesianVector trueVertexPosition(trueNeutrinos.front()->GetVertex());
     CartesianVector vertexCandidatePosition(pVertex->GetPosition());
     
     if (enableSpaceChargeCorrection)

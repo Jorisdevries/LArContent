@@ -49,7 +49,7 @@ StatusCode EventSelectionAlgorithm::Run()
     LArPfoHelper::GetAllConnectedPfos(*pPfoList, allConnectedPfos);
 
     //Get interaction type
-    std::string interactionType(GetInteractionType());
+    int interactionType(GetInteractionType());
     std::cout << "Interaction type: " << interactionType << std::endl;
 
     //Get number of tracks and showers
@@ -77,17 +77,16 @@ StatusCode EventSelectionAlgorithm::Run()
     const float shortestPfoLength(LArPfoHelper::GetThreeDLengthSquared(pShortestPfo)), longestPfoLength(LArPfoHelper::GetThreeDLengthSquared(pLongestPfo));
 
     //longitudinal and transverse momenta
-    pandora::CartesianVector neutrinoMomentum(0.f, 0.f, 0.f);
-    GetApproximateNeutrinoMomentum(pPfoList, pLongestPfo, neutrinoMomentum);
+    pandora::CartesianVector neutrinoMomentum(GetApproximateNeutrinoMomentum(pPfoList, pLongestPfo));
 
     //dE/dx fit variables
     TrackDirectionTool::DirectionFitObject fitResult = m_pTrackDirectionTool->GetPfoDirection(pLongestPfo);
     TrackDirectionTool::FitParameters fitParameters(fitResult.GetFitParameters());
 
     //Write all information to tree
-    //PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "InteractionType", interactionType));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "IsSingleMuon", (interactionType == "CCQEL_MU" ? 1 : 0)));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "IsMuonProton", (interactionType == "CCQEL_MU_P" ? 1 : 0)));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "InteractionType", interactionType));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "IsSingleMuon", (interactionType == 0 ? 1 : 0)));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "IsMuonProton", (interactionType == 1 ? 1 : 0)));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "NumberTracks", nTracks));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "NumberShowers", nShowers));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "TotalEventCharge", totalEventCharge));
@@ -100,7 +99,7 @@ StatusCode EventSelectionAlgorithm::Run()
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "NeutrinoMomentumX", neutrinoMomentum.GetX()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "NeutrinoMomentumY", neutrinoMomentum.GetY()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "NeutrinoMomentumZ", neutrinoMomentum.GetZ()));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "FitParameterOne", fitParameters.GetParameterOne()));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "FitParameterZero", fitParameters.GetParameterZero()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "FitParameterOne", fitParameters.GetParameterOne()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "FitParameterTwo", fitParameters.GetParameterTwo()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "FitParameterThree", fitParameters.GetParameterThree()));
@@ -111,7 +110,7 @@ StatusCode EventSelectionAlgorithm::Run()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-std::string EventSelectionAlgorithm::GetInteractionType() const
+int EventSelectionAlgorithm::GetInteractionType() const
 {
     // Extract input collections
     const MCParticleList *pMCParticleList(nullptr);
@@ -129,8 +128,12 @@ std::string EventSelectionAlgorithm::GetInteractionType() const
     for (const auto &mapEntry : nuMCParticlesToGoodHitsMap) mcPrimaryList.push_back(mapEntry.first);
     mcPrimaryList.sort(LArMCParticleHelper::SortByMomentum);
 
+    if (mcPrimaryList.size() == 0)
+        return -1;
+
     const LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(mcPrimaryList));
-    return LArInteractionTypeHelper::ToString(interactionType);
+    //return LArInteractionTypeHelper::ToString(interactionType);
+    return static_cast<int>(static_cast<unsigned int>(interactionType));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -262,20 +265,27 @@ float EventSelectionAlgorithm::GetPfoOpeningAngle(const pandora::ParticleFlowObj
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-pandora::CartesianVector EventSelectionAlgorithm::GetApproximateNeutrinoMomentum(const pandora::PfoList* pPfoList, const pandora::ParticleFlowObject* pLongestPfo, pandora::CartesianVector neutrinoMomentum) const
+pandora::CartesianVector EventSelectionAlgorithm::GetApproximateNeutrinoMomentum(const pandora::PfoList* pPfoList, const pandora::ParticleFlowObject* pLongestPfo) const
 {
     const float muonMass(105.7), protonMass(938.3);
     CartesianVector muonMomentum(GetApproximatePfoMomentum(pLongestPfo, muonMass)); 
 
-    neutrinoMomentum = muonMomentum;
+    pandora::CartesianVector neutrinoMomentum = muonMomentum;
 
     for (const auto pPfo : *pPfoList)
     {
         if (pPfo == pLongestPfo)
             continue;
 
-        pandora::CartesianVector protonMomentum(GetApproximatePfoMomentum(pLongestPfo, protonMass)); 
-        neutrinoMomentum += protonMomentum; 
+        try
+        {
+            pandora::CartesianVector protonMomentum(GetApproximatePfoMomentum(pPfo, protonMass)); 
+            neutrinoMomentum += protonMomentum; 
+        }
+        catch (...)
+        {
+            continue;
+        }
     }
    
     return neutrinoMomentum.GetUnitVector(); 
@@ -292,10 +302,9 @@ pandora::CartesianVector EventSelectionAlgorithm::GetApproximatePfoMomentum(cons
     float particleCharge(GetPfoCharge(pPfo));
 
     const float adcToMeV(0.0000236 * 197 * (1.0/0.62));
-
     const float momentumNorm(std::sqrt(adcToMeV * adcToMeV * particleCharge * particleCharge + 2 * adcToMeV * particleCharge * particleMass));
 
-    pandora::CartesianVector particleMomentum(particleDirection.GetX() * momentumNorm, particleDirection.GetZ() * momentumNorm, particleDirection.GetZ() * momentumNorm);
+    pandora::CartesianVector particleMomentum(particleDirection.GetX() * momentumNorm, particleDirection.GetY() * momentumNorm, particleDirection.GetZ() * momentumNorm);
     return particleMomentum;
 }
 

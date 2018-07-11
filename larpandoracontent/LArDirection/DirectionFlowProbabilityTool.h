@@ -76,6 +76,7 @@ private:
     unsigned int                    m_extrapolationNSteps;              ///< The number of steps used in the sliding fit extrapolation method
     float                           m_extrapolationStepSize;            ///< The extrapolation step size.
     float                           m_minimumClusterLength;             ///< The minimum length a cluster must be in order to be considered
+    int                             m_minimumNumberClusterHits;         ///< The minimum number of hits a cluster must have in order to be considered
     float                           m_maxBestChiSquaredPerHit;          ///< The chi squared per hit value above which direction fits are ignored
     bool                            m_enableVisualisation;              ///< Whether to visualise primary/secondary emerging clusters and their direction fits
 };

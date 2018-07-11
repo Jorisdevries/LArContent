@@ -41,7 +41,7 @@ class EventSelectionAlgorithm : public pandora::Algorithm
     private:
         pandora::StatusCode Run();
 
-        std::string GetInteractionType() const;
+        int GetInteractionType() const;
 
         void GetNumberTracksAndShowers(pandora::PfoList pfoList, int &nTracks, int &nShowers) const;
 
@@ -57,7 +57,7 @@ class EventSelectionAlgorithm : public pandora::Algorithm
 
         float GetPfoOpeningAngle(const pandora::ParticleFlowObject* pPfo1, const pandora::ParticleFlowObject* pPfo2) const;
 
-        pandora::CartesianVector GetApproximateNeutrinoMomentum(const pandora::PfoList* pPfoList, const pandora::ParticleFlowObject* pLongestPfo, pandora::CartesianVector neutrinoMomentum) const; 
+        pandora::CartesianVector GetApproximateNeutrinoMomentum(const pandora::PfoList* pPfoList, const pandora::ParticleFlowObject* pLongestPfo) const; 
 
         pandora::CartesianVector GetApproximatePfoMomentum(const pandora::ParticleFlowObject* pLongestPfo, const float &particleMass) const; 
 
