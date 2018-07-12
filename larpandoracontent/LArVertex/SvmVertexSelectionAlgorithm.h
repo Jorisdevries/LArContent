@@ -52,8 +52,7 @@ public:
          *  @param  globalAsymmetry the global asymmetry feature
          *  @param  showerAsymmetry the shower asymmetry feature
          */
-        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float intersectionFeature, const float directionFeature, const float directionNClusters, const float energyKick, const float localAsymmetry,
-                          const float globalAsymmetry, const float showerAsymmetry);
+        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float intersectionFeature, const float directionFeature, const float directionNClusters, const float energyKick, const float localAsymmetry, const float globalAsymmetry, const float showerAsymmetry);
 
         float    m_beamDeweighting;    ///< The beam deweighting feature
         float    m_rPhiFeature;        ///< The r/phi feature
@@ -314,6 +313,10 @@ private:
     void CalculateRPhiScores(pandora::VertexVector &vertexVector, VertexFeatureInfoMap &vertexFeatureInfoMap, const KDTreeMap &kdTreeMap) const;
 
     void CalculateIntersectionScores(pandora::VertexVector &vertexVector, VertexFeatureInfoMap &vertexFeatureInfoMap, pandora::ClusterList &clusterList) const;
+
+    int CountViableClusters(pandora::ClusterList &clusterList) const;
+
+    float GetMinimalExtremalZDistance(pandora::ClusterList &clusterList, const pandora::CartesianVector &vertexProjection) const;
 
     pandora::CartesianVector GetIntersectionPoint(pandora::ClusterList &clusterList) const;
 

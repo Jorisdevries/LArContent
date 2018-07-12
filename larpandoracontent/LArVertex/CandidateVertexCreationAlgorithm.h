@@ -66,6 +66,18 @@ private:
      */
     void CreateCrossingCandidates(const pandora::ClusterVector &clusterVectorU, const pandora::ClusterVector &clusterVectorV, const pandora::ClusterVector &clusterVectorW) const;
 
+    void CreateZCandidates(const pandora::ClusterVector &clusterVectorU, const pandora::ClusterVector &clusterVectorV, const pandora::ClusterVector &clusterVectorW);
+
+    void CreateVertices(pandora::HitType hitType1, pandora::HitType hitType2, std::vector<pandora::CartesianVector> &positions1, std::vector<pandora::CartesianVector> &positions2);
+
+    void CreatePositions(pandora::CaloHitVector &caloHitVector, std::vector<pandora::CartesianVector> &positions);
+
+    pandora::CaloHitVector GetLowestZHits(const pandora::ClusterVector &clusterVector);
+
+    static bool SortHitsByZ(const pandora::CaloHit* const pCaloHit1, const pandora::CaloHit* const pCaloHit2);
+
+    void CreateVertex(pandora::HitType hitType1, pandora::HitType hitType2, pandora::CartesianVector position1, pandora::CartesianVector position2);
+
     /**
      *  @brief  Identify where (extrapolated) clusters plausibly cross in 2D
      *
@@ -142,6 +154,7 @@ private:
     float                   m_maxEndpointXDiscrepancy;          ///< The max cluster endpoint discrepancy
 
     bool                    m_enableCrossingCandidates;         ///< Whether to create crossing vertex candidates
+    bool                    m_enableZCandidates;                ///< Whether to create low-Z vertex candidates
     unsigned int            m_nMaxCrossingCandidates;           ///< The max number of crossing candidates to create
     float                   m_maxCrossingXDiscrepancy;          ///< The max cluster endpoint discrepancy
     unsigned int            m_extrapolationNSteps;              ///< Number of extrapolation steps, at each end of cluster, of specified size

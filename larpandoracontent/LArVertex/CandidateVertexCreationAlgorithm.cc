@@ -29,6 +29,7 @@ CandidateVertexCreationAlgorithm::CandidateVertexCreationAlgorithm() :
     m_enableEndpointCandidates(true),
     m_maxEndpointXDiscrepancy(4.f),
     m_enableCrossingCandidates(false),
+    m_enableZCandidates(false),
     m_nMaxCrossingCandidates(500),
     m_maxCrossingXDiscrepancy(0.5f),
     m_extrapolationNSteps(200),
@@ -59,6 +60,9 @@ StatusCode CandidateVertexCreationAlgorithm::Run()
 
         if (m_enableCrossingCandidates)
             this->CreateCrossingCandidates(clusterVectorU, clusterVectorV, clusterVectorW);
+
+        if (m_enableZCandidates)
+            this->CreateZCandidates(clusterVectorU, clusterVectorV, clusterVectorW);
 
         if (!pVertexList->empty())
         {
@@ -345,6 +349,117 @@ void CandidateVertexCreationAlgorithm::CreateCrossingVertices(const CartesianPoi
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+void CandidateVertexCreationAlgorithm::CreateZCandidates(const ClusterVector &clusterVectorU, const ClusterVector &clusterVectorV, const ClusterVector &clusterVectorW)
+{
+    std::cout << "Z candidates are enabled" << std::endl;
+
+    CaloHitVector lowestZHitsU(this->GetLowestZHits(clusterVectorU));
+    CaloHitVector lowestZHitsV(this->GetLowestZHits(clusterVectorV));
+    CaloHitVector lowestZHitsW(this->GetLowestZHits(clusterVectorW));
+
+    std::vector<CartesianVector> positionsU, positionsV, positionsW;
+
+    this->CreatePositions(lowestZHitsU, positionsU);
+    this->CreatePositions(lowestZHitsV, positionsV);
+    this->CreatePositions(lowestZHitsW, positionsW);
+
+    this->CreateVertices(TPC_VIEW_U, TPC_VIEW_V, positionsU, positionsV);
+    this->CreateVertices(TPC_VIEW_U, TPC_VIEW_W, positionsU, positionsW);
+    this->CreateVertices(TPC_VIEW_V, TPC_VIEW_W, positionsV, positionsW);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void CandidateVertexCreationAlgorithm::CreateVertices(HitType hitType1, HitType hitType2, std::vector<CartesianVector> &positions1, std::vector<CartesianVector> &positions2)
+{
+    for (const auto position1: positions1)
+    {
+        for (const auto position2: positions2)
+            CreateVertex(hitType1, hitType2, position1, position2); 
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void CandidateVertexCreationAlgorithm::CreatePositions(CaloHitVector &caloHitVector, std::vector<CartesianVector> &positions)
+{
+    /*
+    float max_drift(5.f);
+
+    for (const auto pCaloHit : caloHitVector)
+    {
+        CartesianVector position(pCaloHit->GetPositionVector());
+
+        for (float x_drift = -max_drift; x_drift <= max_drift; x_drift += 0.5)
+        {
+            CartesianVector position1(position.GetX() + x_drift, position.GetY(), position.GetZ());
+            positions.push_back(position1);
+        }
+    }
+    */
+
+    for (const auto pCaloHit : caloHitVector)
+        positions.push_back(pCaloHit->GetPositionVector());
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::CaloHitVector CandidateVertexCreationAlgorithm::GetLowestZHits(const ClusterVector &clusterVector)
+{
+    pandora::CaloHitVector caloHitVector;
+
+    for (const auto pCluster : clusterVector)
+    {
+        OrderedCaloHitList orderedCaloHitList(pCluster->GetOrderedCaloHitList());
+        CaloHitList caloHitList;
+        orderedCaloHitList.FillCaloHitList(caloHitList);
+
+        for (const auto pCaloHit : caloHitList) 
+            caloHitVector.push_back(pCaloHit);
+    }
+
+    std::sort(caloHitVector.begin(), caloHitVector.end(), SortHitsByZ);
+    pandora::CaloHitVector caloHitVectorSubset;
+
+    int nHitsToConsider(5);
+
+    if (caloHitVector.size() < nHitsToConsider)
+        caloHitVectorSubset.insert(caloHitVectorSubset.begin(), caloHitVector.begin(), caloHitVector.end());
+    else
+        caloHitVectorSubset.insert(caloHitVectorSubset.begin(), caloHitVector.begin(), caloHitVector.begin() + (nHitsToConsider - 1));
+
+    return caloHitVectorSubset;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+bool CandidateVertexCreationAlgorithm::SortHitsByZ(const pandora::CaloHit* const pCaloHit1, const pandora::CaloHit* const pCaloHit2)
+{
+    return pCaloHit1->GetPositionVector().GetZ() < pCaloHit2->GetPositionVector().GetZ();
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void CandidateVertexCreationAlgorithm::CreateVertex(HitType hitType1, HitType hitType2, CartesianVector position1, CartesianVector position2)
+{
+    float chiSquared(0.f);
+    CartesianVector position3D(0.f, 0.f, 0.f);
+    LArGeometryHelper::MergeTwoPositions3D(this->GetPandora(), hitType1, hitType2, position1, position2, position3D, chiSquared);
+
+    if (chiSquared > m_chiSquaredCut)
+        return;
+
+    PandoraContentApi::Vertex::Parameters parameters;
+    parameters.m_position = position3D;
+    parameters.m_vertexLabel = VERTEX_INTERACTION;
+    parameters.m_vertexType = VERTEX_3D;
+
+    const Vertex *pVertex(NULL);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::Vertex::Create(*this, parameters, pVertex));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 void CandidateVertexCreationAlgorithm::AddToSlidingFitCache(const Cluster *const pCluster)
 {
     const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
@@ -408,6 +523,9 @@ StatusCode CandidateVertexCreationAlgorithm::ReadSettings(const TiXmlHandle xmlH
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "EnableCrossingCandidates", m_enableCrossingCandidates));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "EnableZCandidates", m_enableZCandidates));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "NMaxCrossingCandidates", m_nMaxCrossingCandidates));

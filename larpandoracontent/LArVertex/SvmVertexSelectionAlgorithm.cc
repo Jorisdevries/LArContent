@@ -55,7 +55,7 @@ SvmVertexSelectionAlgorithm::SvmVertexSelectionAlgorithm() :
     m_maxTrueVertexRadius(1.f),
     m_useRPhiFeatureForRegion(false),
     m_dropFailedRPhiFastScoreCandidates(true),
-    m_enableIntersectionFeatures(false),
+    m_enableIntersectionFeatures(true),
     m_enableDirectionFeatures(false), //whether to enable direction features
     m_directionScoreReweighting(false),
     m_extrapolationNSteps(200),
@@ -105,12 +105,21 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
     LArMvaHelper::MvaFeatureVector eventFeatureList;
     this->AddEventFeaturesToVector(eventFeatureInfo, eventFeatureList);
 
+    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersU, "All Clusters U", BLACK));
+    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersV, "All Clusters V", BLACK));
+    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersW, "All Clusters W", BLACK));
+
     VertexFeatureInfoMap vertexFeatureInfoMap;
     for (const Vertex *const pVertex : vertexVector)
     {
+        const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pVertex->GetPosition(), TPC_VIEW_W));
+        //PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "Vertex Projection", BLUE, 1));
+
         this->PopulateVertexFeatureInfoMap(beamConstants, clustersW, clusterListMap, slidingFitDataListMap, showerClusterListMap, kdTreeMap, pVertex,
             vertexFeatureInfoMap);
     }
+
+    //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
 
     // Use a simple score to get the list of vertices representing good regions.
 
@@ -162,7 +171,9 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
         }
 
         this->CalculateRPhiScores(regionalVertices, vertexFeatureInfoMap, kdTreeMap);
-        this->CalculateIntersectionScores(regionalVertices, vertexFeatureInfoMap, clustersW);
+
+        if (m_enableIntersectionFeatures)
+            this->CalculateIntersectionScores(regionalVertices, vertexFeatureInfoMap, clustersW);
 
         if (!regionalVertices.empty())
         {
@@ -639,31 +650,86 @@ void SvmVertexSelectionAlgorithm::CalculateRPhiScores(VertexVector &vertexVector
 void SvmVertexSelectionAlgorithm::CalculateIntersectionScores(VertexVector &vertexVector, VertexFeatureInfoMap &vertexFeatureInfoMap,
     ClusterList &clusterList) const
 {
+    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clusterList, "All Clusters", BLACK));
+    //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
+
+    int nViableClusters(CountViableClusters(clusterList));
+    std::cout << "nViableClusters: " << nViableClusters << std::endl;
+
+    CartesianVector intersectionPoint(GetIntersectionPoint(clusterList));
+
+    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clusterList, "All Clusters", BLACK));
+
     for (const auto pVertex : vertexVector)
     {
         float intersectionFeature(0.f);
 
-        if (clusterList.size() > 1)
-        {
-            CartesianVector intersectionPoint(GetIntersectionPoint(clusterList));
-            intersectionFeature = (pVertex->GetPosition() - intersectionPoint).GetMagnitude();
-        }
+        const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pVertex->GetPosition(), TPC_VIEW_W));
+        //PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "Vertex Projection", RED, 1));
+
+        if (nViableClusters > 1)
+            intersectionFeature = (vertexProjection - intersectionPoint).GetMagnitude();
+        else
+            intersectionFeature = GetMinimalExtremalZDistance(clusterList, vertexProjection);
+
+        //std::cout << "intersectionFeature: " << intersectionFeature << std::endl;
 
         VertexFeatureInfo &vertexFeatureInfo = vertexFeatureInfoMap.at(pVertex);
         vertexFeatureInfo.m_intersectionFeature = intersectionFeature; 
     }
+
+    //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+int SvmVertexSelectionAlgorithm::CountViableClusters(ClusterList &clusterList) const
+{
+    int nViableClusters(0);
+
+    for (const auto pCluster : clusterList)
+    {
+        //std::cout << "L: " << LArClusterHelper::GetLength(pCluster) << std::endl;
+        if (LArClusterHelper::GetLength(pCluster) > 2.0)
+            ++nViableClusters;
+    }
+
+    return nViableClusters;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float SvmVertexSelectionAlgorithm::GetMinimalExtremalZDistance(ClusterList &clusterList, const CartesianVector &vertexProjection) const
+{
+    pandora::CartesianVector innerCoordinate(0.f, 0.f, 0.f), outerCoordinate(0.f, 0.f, 0.f);
+    LArClusterHelper::GetExtremalCoordinates(clusterList, innerCoordinate, outerCoordinate);
+
+    float innerDistance((vertexProjection - innerCoordinate).GetMagnitude()), outerDistance((vertexProjection - outerCoordinate).GetMagnitude());
+
+    return (innerDistance < outerDistance ? innerDistance : outerDistance); 
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 pandora::CartesianVector SvmVertexSelectionAlgorithm::GetIntersectionPoint(ClusterList &clusterList) const
 {
+    int nViableClusters(CountViableClusters(clusterList));
+    
+    if (nViableClusters < 2)
+    {
+        CartesianVector origin(0.f, 0.f, 0.f);
+        return origin;
+    }
+
     ClusterList twoLargestClusters;
     GetTwoLargestClusters(clusterList, twoLargestClusters);
 
+    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &twoLargestClusters, "Two Largest Clusters", BLACK));
+    //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
+
     std::vector<CartesianPointVector> spacePointsVector;
 
-    for (const auto pCluster : clusterList)
+    for (const auto pCluster : twoLargestClusters)
     {
         CartesianPointVector spacepoints;
         GetSpacepoints(pCluster, spacepoints);
@@ -675,8 +741,12 @@ pandora::CartesianVector SvmVertexSelectionAlgorithm::GetIntersectionPoint(Clust
 
     for (const auto &position1 : spacePointsVector.front())
     {
+        //PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &position1, "Extrapolation", BLACK, 1));
+
         for (const auto &position2 : spacePointsVector.back())
         {
+            //PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &position2, "Extrapolation", BLACK, 1));
+
             if ((position1 - position2).GetMagnitude() < closestApproach)     
             {
                 closestApproach = (position1 - position2).GetMagnitude();
@@ -684,6 +754,10 @@ pandora::CartesianVector SvmVertexSelectionAlgorithm::GetIntersectionPoint(Clust
             }
         }
     }
+
+    //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
+
+    //std::cout << "closestApproach: " << closestApproach << std::endl;
 
     return intersectionPoint;
 }
@@ -695,15 +769,18 @@ void SvmVertexSelectionAlgorithm::GetTwoLargestClusters(ClusterList &clusterList
     ClusterVector clusterVector(clusterList.begin(), clusterList.end());
 
     std::sort(clusterVector.begin(), clusterVector.end(), ClusterLengthComparison);
-    twoLargestClusters.insert(twoLargestClusters.begin(), clusterVector.front());
+    twoLargestClusters.insert(twoLargestClusters.begin(), clusterVector.at(0));
     twoLargestClusters.insert(twoLargestClusters.begin(), clusterVector.at(1));
+
+    //std::cout << "L1: " << LArClusterHelper::GetLength(clusterVector.at(0)) << std::endl;
+    //std::cout << "L2: " << LArClusterHelper::GetLength(clusterVector.at(1)) << std::endl;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 bool SvmVertexSelectionAlgorithm::ClusterLengthComparison(const Cluster *const pCluster1, const Cluster *const pCluster2)
 {
-    return LArClusterHelper::GetLength(pCluster1) < LArClusterHelper::GetLength(pCluster2);
+    return LArClusterHelper::GetLength(pCluster1) > LArClusterHelper::GetLength(pCluster2);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -711,7 +788,7 @@ bool SvmVertexSelectionAlgorithm::ClusterLengthComparison(const Cluster *const p
 void SvmVertexSelectionAlgorithm::GetSpacepoints(const Cluster *const pCluster, CartesianPointVector &spacepoints) const
 {
     LArClusterHelper::GetCoordinateVector(pCluster, spacepoints);
-    
+
     const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
     const TwoDSlidingFitResult fitResult(pCluster, m_slidingFitWindow, slidingFitPitch);
 
