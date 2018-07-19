@@ -58,8 +58,10 @@ SvmVertexSelectionAlgorithm::SvmVertexSelectionAlgorithm() :
     m_enableIntersectionFeatures(true),
     m_enableDirectionFeatures(false), //whether to enable direction features
     m_directionScoreReweighting(false),
+    m_onlyCorrectDirection(false),
     m_extrapolationNSteps(200),
     m_extrapolationStepSize(0.1f),
+    m_visualiseEvent(false),
     m_fileIdentifier(1)
 {
 }
@@ -105,21 +107,28 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
     LArMvaHelper::MvaFeatureVector eventFeatureList;
     this->AddEventFeaturesToVector(eventFeatureInfo, eventFeatureList);
 
-    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersU, "All Clusters U", BLACK));
-    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersV, "All Clusters V", BLACK));
-    //PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersW, "All Clusters W", BLACK));
+    if (m_visualiseEvent)
+    {
+        PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersU, "All Clusters U", BLACK));
+        PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersV, "All Clusters V", BLACK));
+        PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersW, "All Clusters W", BLACK));
+    }
 
     VertexFeatureInfoMap vertexFeatureInfoMap;
     for (const Vertex *const pVertex : vertexVector)
     {
-        const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pVertex->GetPosition(), TPC_VIEW_W));
-        //PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "Vertex Projection", BLUE, 1));
+        if (m_visualiseEvent)
+        {
+            const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pVertex->GetPosition(), TPC_VIEW_W));
+            PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "Vertex Projection", BLUE, 1));
+        }
 
         this->PopulateVertexFeatureInfoMap(beamConstants, clustersW, clusterListMap, slidingFitDataListMap, showerClusterListMap, kdTreeMap, pVertex,
             vertexFeatureInfoMap);
     }
 
-    //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
+    if (m_visualiseEvent)
+        PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
 
     // Use a simple score to get the list of vertices representing good regions.
 
@@ -130,8 +139,39 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
     VertexVector bestRegionVertices;
     this->GetBestRegionVertices(initialScoreList, bestRegionVertices);
 
+    if (m_visualiseEvent)
+    {
+        PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersU, "All Clusters U", BLACK));
+        PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersV, "All Clusters V", BLACK));
+        PANDORA_MONITORING_API(VisualizeClusters(this->GetPandora(), &clustersW, "All Clusters W", BLACK));
+
+        for (const Vertex *const pVertex : bestRegionVertices)
+        {
+            const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pVertex->GetPosition(), TPC_VIEW_W));
+            PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "Region Vertex Projection", GREEN, 1));
+        }
+
+        PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
+
+        for (const auto pCluster : clustersW)
+        {
+            try
+            {
+                TrackDirectionTool::DirectionFitObject directionFit = this->m_pTrackDirectionTool->GetClusterDirection(pCluster);
+                std::cout << "Probability: " << directionFit.GetProbability() << std::endl;
+                directionFit.DrawFit();
+            }
+            catch (...)
+            {
+                continue;
+            }
+
+            PANDORA_MONITORING_API(Pause(this->GetPandora()));
+        }
+    }
+
     if (m_trainingSetMode)
-        this->ProduceTrainingSets(vertexVector, bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, kdTreeMap);
+        this->ProduceTrainingSets(vertexVector, bestRegionVertices, vertexFeatureInfoMap, eventFeatureList, kdTreeMap, clustersW);
 
     if ((!m_trainingSetMode || m_allowClassifyDuringTraining) && !bestRegionVertices.empty())
     {
@@ -586,7 +626,7 @@ void SvmVertexSelectionAlgorithm::GetBestRegionVertices(VertexScoreList &initial
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 void SvmVertexSelectionAlgorithm::ProduceTrainingSets(const VertexVector &vertexVector, const VertexVector &bestRegionVertices,
-    VertexFeatureInfoMap &vertexFeatureInfoMap, const LArMvaHelper::MvaFeatureVector &eventFeatureList, const KDTreeMap &kdTreeMap) const
+    VertexFeatureInfoMap &vertexFeatureInfoMap, const LArMvaHelper::MvaFeatureVector &eventFeatureList, const KDTreeMap &kdTreeMap, pandora::ClusterList &clustersW) const
 {
     if (vertexVector.empty())
         return;
@@ -614,6 +654,9 @@ void SvmVertexSelectionAlgorithm::ProduceTrainingSets(const VertexVector &vertex
     }
 
     this->CalculateRPhiScores(regionalVertices, vertexFeatureInfoMap, kdTreeMap);
+
+    if (m_enableIntersectionFeatures)
+        this->CalculateIntersectionScores(regionalVertices, vertexFeatureInfoMap, clustersW);
 
     // Produce training examples for the final vertices within the best region.
     if (!regionalVertices.empty())
@@ -654,7 +697,7 @@ void SvmVertexSelectionAlgorithm::CalculateIntersectionScores(VertexVector &vert
     //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
 
     int nViableClusters(CountViableClusters(clusterList));
-    std::cout << "nViableClusters: " << nViableClusters << std::endl;
+    //std::cout << "nViableClusters: " << nViableClusters << std::endl;
 
     CartesianVector intersectionPoint(GetIntersectionPoint(clusterList));
 
@@ -667,12 +710,12 @@ void SvmVertexSelectionAlgorithm::CalculateIntersectionScores(VertexVector &vert
         const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pVertex->GetPosition(), TPC_VIEW_W));
         //PANDORA_MONITORING_API(AddMarkerToVisualization(this->GetPandora(), &vertexProjection, "Vertex Projection", RED, 1));
 
-        if (nViableClusters > 1)
+        if  (nViableClusters > 1 && intersectionPoint.GetMagnitude() > 0)
             intersectionFeature = (vertexProjection - intersectionPoint).GetMagnitude();
         else
             intersectionFeature = GetMinimalExtremalZDistance(clusterList, vertexProjection);
 
-        //std::cout << "intersectionFeature: " << intersectionFeature << std::endl;
+        std::cout << "intersectionFeature: " << intersectionFeature << std::endl;
 
         VertexFeatureInfo &vertexFeatureInfo = vertexFeatureInfoMap.at(pVertex);
         vertexFeatureInfo.m_intersectionFeature = intersectionFeature; 
@@ -690,7 +733,7 @@ int SvmVertexSelectionAlgorithm::CountViableClusters(ClusterList &clusterList) c
     for (const auto pCluster : clusterList)
     {
         //std::cout << "L: " << LArClusterHelper::GetLength(pCluster) << std::endl;
-        if (LArClusterHelper::GetLength(pCluster) > 2.0)
+        if (LArClusterHelper::GetLength(pCluster) > 5.0)
             ++nViableClusters;
     }
 
@@ -701,8 +744,21 @@ int SvmVertexSelectionAlgorithm::CountViableClusters(ClusterList &clusterList) c
 
 float SvmVertexSelectionAlgorithm::GetMinimalExtremalZDistance(ClusterList &clusterList, const CartesianVector &vertexProjection) const
 {
+    pandora::ClusterList longestClusterList;
+    float longestClusterLength(0.f);
+
+    for (const auto pCluster : clusterList)
+    {
+        if (LArClusterHelper::GetLength(pCluster) > longestClusterLength)
+        {
+            longestClusterLength = LArClusterHelper::GetLength(pCluster);
+            longestClusterList.clear();
+            longestClusterList.insert(longestClusterList.begin(), pCluster);
+        }
+    }
+
     pandora::CartesianVector innerCoordinate(0.f, 0.f, 0.f), outerCoordinate(0.f, 0.f, 0.f);
-    LArClusterHelper::GetExtremalCoordinates(clusterList, innerCoordinate, outerCoordinate);
+    LArClusterHelper::GetExtremalCoordinates(longestClusterList, innerCoordinate, outerCoordinate);
 
     float innerDistance((vertexProjection - innerCoordinate).GetMagnitude()), outerDistance((vertexProjection - outerCoordinate).GetMagnitude());
 
@@ -714,12 +770,10 @@ float SvmVertexSelectionAlgorithm::GetMinimalExtremalZDistance(ClusterList &clus
 pandora::CartesianVector SvmVertexSelectionAlgorithm::GetIntersectionPoint(ClusterList &clusterList) const
 {
     int nViableClusters(CountViableClusters(clusterList));
+    CartesianVector origin(0.f, 0.f, 0.f);
     
     if (nViableClusters < 2)
-    {
-        CartesianVector origin(0.f, 0.f, 0.f);
         return origin;
-    }
 
     ClusterList twoLargestClusters;
     GetTwoLargestClusters(clusterList, twoLargestClusters);
@@ -757,9 +811,12 @@ pandora::CartesianVector SvmVertexSelectionAlgorithm::GetIntersectionPoint(Clust
 
     //PANDORA_MONITORING_API(ViewEvent(this->GetPandora()));
 
-    //std::cout << "closestApproach: " << closestApproach << std::endl;
+    std::cout << "closestApproach: " << closestApproach << std::endl;
 
-    return intersectionPoint;
+    if (closestApproach < 1.0)
+        return intersectionPoint;
+    else
+        return origin;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -850,7 +907,23 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ProduceTrainingExamples(con
     VertexFeatureInfo bestVertexFeatureInfo(vertexFeatureInfoMap.at(pBestVertex));
     this->AddVertexFeaturesToVector(bestVertexFeatureInfo, bestVertexFeatureList, useRPhi, useDirection);
 
-    std::string fileString(std::to_string(m_fileIdentifier));
+    std::string fileString(std::to_string(m_fileIdentifier)), directionString("UNKNOWN");
+
+    const MCParticleList *pMCParticleList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
+    
+    for (const auto pMCParticle : *pMCParticleList)
+    {
+        if (pMCParticle->GetParticleId() == 13 && (pMCParticle->GetEndpoint() - pMCParticle->GetVertex()).GetMagnitude() > 30.0)
+        {
+            if (pMCParticle->GetVertex().GetZ() + 20.0 < pMCParticle->GetEndpoint().GetZ())
+                directionString = "FORWARDS";
+            else if (pMCParticle->GetVertex().GetZ() > pMCParticle->GetEndpoint().GetZ() + 20.0)
+                directionString = "BACKWARDS";
+            else
+                directionString = "UNKNOWN";
+        }
+    }
 
     for (const Vertex *const pVertex : vertexVector)
     {
@@ -865,13 +938,13 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ProduceTrainingExamples(con
         {
             if (coinFlip(generator))
             {
-                LArMvaHelper::ProduceTrainingExample("/usera/jjd49/pandora_direction/CondorUtilities/txts/" + fileString + "_" + trainingOutputFile + "_" + interactionType + ".txt", true, eventFeatureList,
+                LArMvaHelper::ProduceTrainingExample("/usera/jjd49/pandora_direction/CondorUtilities/txts/" + fileString + "_" + trainingOutputFile + "_" + directionString + "_" + interactionType + ".txt", true, eventFeatureList,
                     bestVertexFeatureList, featureList);
             }
 
             else
             {
-                LArMvaHelper::ProduceTrainingExample("/usera/jjd49/pandora_direction/CondorUtilities/txts/" + fileString + "_" + trainingOutputFile + "_" + interactionType + ".txt", false, eventFeatureList, featureList,
+                LArMvaHelper::ProduceTrainingExample("/usera/jjd49/pandora_direction/CondorUtilities/txts/" + fileString + "_" + trainingOutputFile + "_" + directionString + "_" + interactionType + ".txt", false, eventFeatureList, featureList,
                     bestVertexFeatureList);
             }
         }
@@ -904,11 +977,12 @@ void SvmVertexSelectionAlgorithm::GetBestVertex(const VertexVector &vertexVector
                 pMCNeutrino->GetEndpoint().GetZ());
 
             const float dr = (mcNeutrinoPosition - correctedVertexPosition).GetMagnitude();
+
             if (dr < mcVertexDr)
                 mcVertexDr = dr;
         }
 
-        if (mcVertexDr < bestVertexDr)
+        if (std::abs(mcVertexDr - 0.5) < bestVertexDr) //Need to account for 0.5cm MC/reco offset
         {
             bestVertexDr = mcVertexDr;
             pBestVertex = pVertex;
@@ -985,7 +1059,7 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVertices(const VertexV
             std::function< TrackDirectionTool::DirectionFitObject (const pandora::Cluster*) > lambda = [this](const pandora::Cluster* const pCluster){ return this->m_pTrackDirectionTool->GetClusterDirection(pCluster); };
             float directionFlowProbability(m_pDirectionFlowProbabilityTool->GetDirectionFlowProbability(lambda, vertexPosition, clusterList)); 
 
-            if (directionFlowProbability > 0.8)
+            if (directionFlowProbability > 0.9)
             {
                 pBestVertex = pVertex;
                 break;
@@ -1037,7 +1111,7 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVertices(const VertexV
         std::cout << "Vertex DR: " << GetVertexDR(pVertex, true) << " with probability (P_svm * P_df): " << newVertexProbability << " * " <<  newDirectionFlowProbability << " = " << newVertexProbability * newDirectionFlowProbability << std::endl;
         std::cout << "----------------------------------------------------" << std::endl;
 
-        if (m_onlyCorrectDirection && newDirectionFlowProbability < 0.2)
+        if (m_onlyCorrectDirection && newDirectionFlowProbability < 0.1)
             continue;
 
         if (newVertexProbability * newDirectionFlowProbability > bestVertexProbability * bestDirectionFlowProbability)
@@ -1235,6 +1309,9 @@ StatusCode SvmVertexSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "ExtrapolationStepSize", m_extrapolationStepSize));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "VisualiseEvent", m_visualiseEvent));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "FileIdentifier", m_fileIdentifier));

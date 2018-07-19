@@ -211,9 +211,9 @@ StatusCode VertexSelectionBaseAlgorithm::Run()
 
     this->SelectTopScoreVertices(vertexScoreList, selectedVertexList);
 
-    std::cout << "selectedVertexList.size(): " << selectedVertexList.size() << std::endl;
+    //std::cout << "selectedVertexList.size(): " << selectedVertexList.size() << std::endl;
     std::cout << "-----> Vertex DR: " << this->GetVertexDR(pMCParticleList, selectedVertexList.front(), true) << std::endl; 
-    std::cout << "(" << selectedVertexList.front()->GetPosition().GetX() << ", " << selectedVertexList.front()->GetPosition().GetY() << ", " << selectedVertexList.front()->GetPosition().GetZ() << ")" << std::endl;
+    //std::cout << "(" << selectedVertexList.front()->GetPosition().GetX() << ", " << selectedVertexList.front()->GetPosition().GetY() << ", " << selectedVertexList.front()->GetPosition().GetZ() << ")" << std::endl;
 
     if (!selectedVertexList.empty())
     {

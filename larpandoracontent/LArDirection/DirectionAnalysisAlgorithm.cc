@@ -75,6 +75,11 @@ StatusCode DirectionAnalysisAlgorithm::Run()
     const VertexList *pVertexList(nullptr);
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_vertexListName, pVertexList));
 
+    const VertexList *pCandidateVertexList(nullptr);
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, "CandidateVertices3D", pCandidateVertexList));
+
+    std::cout << "pCandidateVertexList->size(): " << pCandidateVertexList->size() << std::endl;
+
     const PfoList *pPfoList(nullptr);
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_pfoListName, pPfoList));
 
@@ -106,7 +111,7 @@ StatusCode DirectionAnalysisAlgorithm::Run()
     this->WriteClusterAndHitInformation(clusterVector);
 
     if (!m_cosmic)
-        this->WriteVertexInformation(pMCParticleList, pNeutrinoVertex);
+        this->WriteVertexInformation(pMCParticleList, pCandidateVertexList, pNeutrinoVertex);
     
     return STATUS_CODE_SUCCESS;
 }
@@ -202,16 +207,18 @@ int DirectionAnalysisAlgorithm::GetInteractionType() const
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void DirectionAnalysisAlgorithm::WriteVertexInformation(const pandora::MCParticleList *pMCParticleList, const pandora::Vertex* const pVertex)
+void DirectionAnalysisAlgorithm::WriteVertexInformation(const pandora::MCParticleList *pMCParticleList, const pandora::VertexList* pCandidateVertexList, const pandora::Vertex* const pVertex)
 {
     int interactionType(GetInteractionType());    
 
     float vertexDR(this->GetVertexDR(pMCParticleList, pVertex, false));
     float sccVertexDR(this->GetVertexDR(pMCParticleList, pVertex, true));
+    float vertexDRMin(this->GetVertexDRMin(pMCParticleList, pCandidateVertexList, true));
 
     //std::cout << "Vertex DR: " << vertexDR << std::endl;
     std::cout << "SCE Vertex DR: " << sccVertexDR << std::endl;
-    std::cout << "(" << pVertex->GetPosition().GetX() << ", " << pVertex->GetPosition().GetY() << ", " << pVertex->GetPosition().GetZ() << ")" << std::endl;
+    std::cout << "Vertex DR Min: " << vertexDRMin << std::endl;
+    //std::cout << "Chosen vertex position: (" << pVertex->GetPosition().GetX() << ", " << pVertex->GetPosition().GetY() << ", " << pVertex->GetPosition().GetZ() << ")" << std::endl;
 
     float longestMCLength(0.f);
 
@@ -225,6 +232,7 @@ void DirectionAnalysisAlgorithm::WriteVertexInformation(const pandora::MCParticl
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "interactionType", interactionType));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "VertexDR", vertexDR));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "SCCVertexDR", sccVertexDR));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "VertexDRMin", vertexDRMin));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "MCLength", longestMCLength));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "FileIdentifier", m_fileIdentifier));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), vertexTreeName.c_str(), "EventNumber", m_eventNumber));
@@ -252,12 +260,42 @@ float DirectionAnalysisAlgorithm::GetVertexDR(const pandora::MCParticleList *pMC
         throw STATUS_CODE_FAILURE;
 
     CartesianVector trueVertexPosition(trueNeutrinos.front()->GetVertex());
+    //std::cout << "True vertex position: (" << trueVertexPosition.GetX() << ", " << trueVertexPosition.GetY() << ", " << trueVertexPosition.GetZ() << ")" << std::endl;
+
     CartesianVector vertexCandidatePosition(pVertex->GetPosition());
     
     if (enableSpaceChargeCorrection)
         vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
 
     return (vertexCandidatePosition - trueVertexPosition).GetMagnitude();
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float DirectionAnalysisAlgorithm::GetVertexDRMin(const pandora::MCParticleList *pMCParticleList, const pandora::VertexList* pCandidateVertexList, bool enableSpaceChargeCorrection)
+{
+    pandora::MCParticleVector trueNeutrinos;
+    LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
+
+    if (trueNeutrinos.size() != 1)
+        throw STATUS_CODE_FAILURE;
+
+    CartesianVector trueVertexPosition(trueNeutrinos.front()->GetVertex());
+
+    float vertexDRMin(1e6);
+
+    for (const auto pVertex : *pCandidateVertexList)
+    {
+        CartesianVector vertexCandidatePosition(pVertex->GetPosition());
+        
+        if (enableSpaceChargeCorrection)
+            vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
+
+        if ((vertexCandidatePosition - trueVertexPosition).GetMagnitude() < vertexDRMin)
+            vertexDRMin = (vertexCandidatePosition - trueVertexPosition).GetMagnitude();
+    }
+
+    return vertexDRMin; 
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

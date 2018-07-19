@@ -1588,6 +1588,8 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
         std::cout << "Hit Q/w: " << hitCharge.GetChargeOverWidth() << std::endl; 
         std::cout << "Hit f_dEdx_2D: " << f_dEdx_2D << std::endl; 
         std::cout << "Hit f_sigma: " << f_sigma << std::endl; 
+        std::cout << "Hit b_dEdx_2D: " << b_dEdx_2D << std::endl; 
+        std::cout << "Hit b_sigma: " << b_sigma << std::endl; 
         std::cout << "Hit offset: " << backwardsDelta << std::endl; 
         std::cout << "------------------" << std::endl;
         */

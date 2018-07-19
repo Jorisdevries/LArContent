@@ -39,8 +39,9 @@ private:
     void                    WriteMCInformation(const pandora::MCParticleList *pMCParticleList, const pandora::CaloHitList *pCaloHitList);
     void                    CheckEventType(const pandora::MCParticleList *pMCParticleList, const pandora::CaloHitList *pCaloHitList, pandora::PfoVector &pfoVector, int &targetNumberMuons, int &targetNumberProtons, int &nOthers, int &targetNumberPfos);
     int                     GetInteractionType() const;
-    void                    WriteVertexInformation(const pandora::MCParticleList *pMCParticleList, const pandora::Vertex* const pVertex);
+    void                    WriteVertexInformation(const pandora::MCParticleList *pMCParticleList, const pandora::VertexList* pCandidateVertexList, const pandora::Vertex* const pVertex);
     float                   GetVertexDR(const pandora::MCParticleList *pMCParticleList, const pandora::Vertex* const pVertex, bool enableSpaceChargeCorrection);
+    float                   GetVertexDRMin(const pandora::MCParticleList *pMCParticleList, const pandora::VertexList* pCandidateVertexList, bool enableSpaceChargeCorrection);
     void                    WritePfoInformation(pandora::PfoVector &pfoVector);
     bool                    IsGoodPfo(const pandora::ParticleFlowObject* pPfo);
     void                    WriteClusterAndHitInformation(pandora::ClusterVector &clusterVector);

@@ -301,7 +301,7 @@ private:
      *  @param  kdTreeMap
      */
     void ProduceTrainingSets(const pandora::VertexVector &vertexVector, const pandora::VertexVector &bestRegionVertices,
-        VertexFeatureInfoMap &vertexFeatureInfoMap, const LArMvaHelper::MvaFeatureVector &eventFeatureList,const KDTreeMap &kdTreeMap) const;
+        VertexFeatureInfoMap &vertexFeatureInfoMap, const LArMvaHelper::MvaFeatureVector &eventFeatureList,const KDTreeMap &kdTreeMap, pandora::ClusterList &clustersW) const;
 
     /**
      *  @brief  Calculate the r/phi scores for the vertices in a vector, possibly erasing those that fail the fast score test
@@ -456,6 +456,7 @@ private:
     bool                            m_onlyCorrectDirection;               ///< Whether to outright discard vertex candidates at the wrong side of the track
     unsigned int                    m_extrapolationNSteps;              ///< The number of steps used in the sliding fit extrapolation method
     float                           m_extrapolationStepSize;            ///< The extrapolation step size.
+    bool                            m_visualiseEvent;
     int                             m_fileIdentifier;                     ///< File identifier
 };
 
