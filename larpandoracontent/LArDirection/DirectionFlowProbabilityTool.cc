@@ -31,6 +31,75 @@ DirectionFlowProbabilityTool::DirectionFlowProbabilityTool() :
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+const pandora::Cluster* DirectionFlowProbabilityTool::GetLongestCluster(const pandora::ClusterList &clusterList) const
+{
+    const pandora::Cluster* pLongestCluster(clusterList.front());
+    float longestClusterLength(0.f);
+
+    for (const auto pCluster : clusterList)
+    {
+        if (LArClusterHelper::GetLength(pCluster) > longestClusterLength)
+        {
+            longestClusterLength = LArClusterHelper::GetLength(pCluster);
+            pLongestCluster = pCluster;
+        }
+    }
+
+    return pLongestCluster;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float DirectionFlowProbabilityTool::GetLongestClusterLength(const pandora::ClusterList &inputClusterList) const
+{
+    try
+    {
+        const pandora::Cluster* const pLongestCluster(this->GetLongestCluster(inputClusterList));
+        return LArClusterHelper::GetLength(pLongestCluster);
+    }
+    catch (...)
+    {
+        std::cout << "Could not get longest cluster length." << std::endl;
+        return 0;
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float DirectionFlowProbabilityTool::GetLongestClusterProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::ClusterList &inputClusterList) const
+{
+    try
+    {
+        const pandora::Cluster* const pLongestCluster(this->GetLongestCluster(inputClusterList));
+        TrackDirectionTool::DirectionFitObject directionFit(directionToolLambda(pLongestCluster));
+        return directionFit.GetProbability();
+    }
+    catch (...)
+    {
+        std::cout << "Could not get longest cluster probability." << std::endl;
+        return 0.5;
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float DirectionFlowProbabilityTool::GetDistanceToLongestClusterBeginpoint(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterList) const
+{
+    try
+    {
+        const pandora::Cluster* const pLongestCluster(this->GetLongestCluster(inputClusterList));
+        TrackDirectionTool::DirectionFitObject directionFit(directionToolLambda(pLongestCluster));
+        return (vertexPosition - directionFit.GetBeginpoint()).GetMagnitude();
+    }
+    catch (...)
+    {
+        std::cout << "Could not get distance to longest cluster beginpoint." << std::endl;
+        return 0.5;
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 float DirectionFlowProbabilityTool::GetDirectionFlowProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterList) const
 {
     try

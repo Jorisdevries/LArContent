@@ -52,13 +52,14 @@ public:
          *  @param  globalAsymmetry the global asymmetry feature
          *  @param  showerAsymmetry the shower asymmetry feature
          */
-        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float intersectionFeature, const float directionFeature, const float directionNClusters, const float energyKick, const float localAsymmetry, const float globalAsymmetry, const float showerAsymmetry);
+        VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float directionBeginpointDistance, const float directionFitQuality, const float energyKick, const float localAsymmetry, const float globalAsymmetry, const float showerAsymmetry);
 
         float    m_beamDeweighting;    ///< The beam deweighting feature
         float    m_rPhiFeature;        ///< The r/phi feature
-        float    m_intersectionFeature;
+        //float    m_intersectionFeature;
         float    m_directionFeature;   ///< The direction feature
-        float    m_directionNClusters;   ///< The direction feature
+        float    m_directionBeginpointDistance;   ///< The direction feature
+        float    m_directionFitQuality;
         float    m_energyKick;         ///< The energy kick feature
         float    m_localAsymmetry;     ///< The local asymmetry feature
         float    m_globalAsymmetry;    ///< The global asymmetry feature
@@ -269,7 +270,7 @@ private:
      *  @param  pVertex the vertex
      *  @param  vertexFeatureInfoMap the map to populate
      */
-    void PopulateVertexFeatureInfoMap(const BeamConstants &beamConstants, const pandora::ClusterList &clustersW, const ClusterListMap &clusterListMap,
+    void PopulateVertexFeatureInfoMap(const BeamConstants &beamConstants, float &longestClusterDirectionProbability, float &minChiSquaredPerHit, float &longestClusterLength, pandora::CartesianVector &beginpointPosition, const ClusterListMap &clusterListMap,
         const SlidingFitDataListMap &slidingFitDataListMap, const ShowerClusterListMap &showerClusterListMap, const KDTreeMap &kdTreeMap,
         const pandora::Vertex *const pVertex, VertexFeatureInfoMap &vertexFeatureInfoMap) const;
 
@@ -301,7 +302,7 @@ private:
      *  @param  kdTreeMap
      */
     void ProduceTrainingSets(const pandora::VertexVector &vertexVector, const pandora::VertexVector &bestRegionVertices,
-        VertexFeatureInfoMap &vertexFeatureInfoMap, const LArMvaHelper::MvaFeatureVector &eventFeatureList,const KDTreeMap &kdTreeMap, pandora::ClusterList &clustersW) const;
+        VertexFeatureInfoMap &vertexFeatureInfoMap, const LArMvaHelper::MvaFeatureVector &eventFeatureList,const KDTreeMap &kdTreeMap) const;
 
     /**
      *  @brief  Calculate the r/phi scores for the vertices in a vector, possibly erasing those that fail the fast score test
@@ -462,13 +463,14 @@ private:
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline SvmVertexSelectionAlgorithm::VertexFeatureInfo::VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float intersectionFeature, const float directionFeature, const float directionNClusters, const float energyKick,
+inline SvmVertexSelectionAlgorithm::VertexFeatureInfo::VertexFeatureInfo(const float beamDeweighting, const float rPhiFeature, const float directionFeature, const float directionBeginpointDistance, const float directionFitQuality, const float energyKick,
     const float localAsymmetry, const float globalAsymmetry, const float showerAsymmetry) :
     m_beamDeweighting(beamDeweighting),
     m_rPhiFeature(rPhiFeature),
-    m_intersectionFeature(intersectionFeature),
+    //m_intersectionFeature(intersectionFeature),
     m_directionFeature(directionFeature),
-    m_directionNClusters(directionNClusters),
+    m_directionBeginpointDistance(directionBeginpointDistance),
+    m_directionFitQuality(directionFitQuality),
     m_energyKick(energyKick),
     m_localAsymmetry(localAsymmetry),
     m_globalAsymmetry(globalAsymmetry),

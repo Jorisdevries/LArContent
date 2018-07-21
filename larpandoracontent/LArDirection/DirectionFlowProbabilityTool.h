@@ -31,7 +31,15 @@ public:
      *  @brief  Default constructor
      */
     DirectionFlowProbabilityTool();
-    
+
+    const pandora::Cluster* GetLongestCluster(const pandora::ClusterList &clusterList) const;
+
+    float GetLongestClusterLength(const pandora::ClusterList &inputClusterList) const;
+
+    float GetLongestClusterProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::ClusterList &inputClusterList) const;
+
+    float GetDistanceToLongestClusterBeginpoint(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterList) const;    
+
     float GetDirectionFlowProbability(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterVector) const;
 
     int GetNumberConsideredClusters(std::function< TrackDirectionTool::DirectionFitObject(const pandora::Cluster* const pCluster) > &directionToolLambda, const pandora::CartesianVector &vertexPosition, const pandora::ClusterList &inputClusterVector) const;

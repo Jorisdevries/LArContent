@@ -41,6 +41,18 @@ class EventSelectionAlgorithm : public pandora::Algorithm
     private:
         pandora::StatusCode Run();
 
+        void WriteNeutrinoInformation(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList) const;
+
+        void WriteTrueNeutrinoInformation(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList) const;
+
+        void WriteReconstructedNeutrinoInformation(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList) const;
+
+        static const pandora::MCParticle *GetMainMCParticle(const pandora::ParticleFlowObject *const pPfo);
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    
+        void WriteVariables(const pandora::PfoList* pPfoList, const pandora::CaloHitList *pCaloHitList) const;
+
         int GetInteractionType() const;
 
         void GetNumberTracksAndShowers(pandora::PfoList pfoList, int &nTracks, int &nShowers) const;
