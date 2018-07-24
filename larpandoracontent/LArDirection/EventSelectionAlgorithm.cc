@@ -31,8 +31,9 @@ EventSelectionAlgorithm::~EventSelectionAlgorithm()
     if (m_writeToTree)
     {
         //PANDORA_MONITORING_API(SaveTree(this->GetPandora(), m_treeName.c_str(), m_fileName.c_str(), "UPDATE"));
-        PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "TrueNeutrinos", m_fileName.c_str(), "UPDATE"));
-        PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "ReconstructedNeutrinos", m_fileName.c_str(), "UPDATE"));
+        //PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "TrueNeutrinos", m_fileName.c_str(), "UPDATE"));
+        //PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "ReconstructedNeutrinos", m_fileName.c_str(), "UPDATE"));
+        PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "EventDescription", m_fileName.c_str(), "UPDATE"));
     }
 }
 
@@ -49,15 +50,206 @@ StatusCode EventSelectionAlgorithm::Run()
     const PfoList *pPfoList(nullptr);
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_pfoListName, pPfoList));
 
-    //this->WriteVariables(pPfoList, pCaloHitList);
-    this->WriteNeutrinoInformation(pMCParticleList, pPfoList);
+    this->WriteEventDescription(pMCParticleList, pPfoList, pCaloHitList);
 
-    pandora::MCParticleVector trueNeutrinos;
-    LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
+    //this->WriteVariables(pPfoList, pCaloHitList);
+    //this->WriteNeutrinoInformation(pMCParticleList, pPfoList);
 
     return STATUS_CODE_SUCCESS;
 }
 
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventSelectionAlgorithm::WriteEventDescription(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, const pandora::CaloHitList* pCaloHitList) const
+{
+    LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap;
+    LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, LArMCParticleHelper::PrimaryParameters(),
+        LArMCParticleHelper::IsBeamNeutrinoFinalState, nuMCParticlesToGoodHitsMap);
+
+    int trueInteractionType(this->GetInteractionType(nuMCParticlesToGoodHitsMap));
+
+    pandora::MCParticleVector trueNeutrinos;
+    LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
+
+    if (trueNeutrinos.size() != 1) return;
+
+    int neutrinoNuanceCode(LArMCParticleHelper::GetNuanceCode(trueNeutrinos.front()));
+
+    pandora::PfoList trueNeutrinoPfos(this->GetTrueNeutrinoAssociatedPfos(pPfoList, nuMCParticlesToGoodHitsMap));  
+    int nTrueNeutrinoAssociatedTracks(this->CountTrackPfos(trueNeutrinoPfos));
+
+    PfoList neutrinoPfos;
+    LArPfoHelper::GetRecoNeutrinos(pPfoList, neutrinoPfos);
+
+    if (neutrinoPfos.size() != 1) return;
+
+    pandora::PfoList recoNeutrinoPrimaryDaughters(this->GetPrimaryDaughters(neutrinoPfos, nuMCParticlesToGoodHitsMap));
+    int nRecoNeutrinoAssociatedTracks(this->CountTrackPfos(recoNeutrinoPrimaryDaughters));
+
+    int interactionTypeResemblance(this->GetRecoNeutrinoInteractionTypeResemblance(recoNeutrinoPrimaryDaughters, nuMCParticlesToGoodHitsMap));
+    int chosenSliceContainsNeutrino(trueInteractionType == interactionTypeResemblance ? 1 : 0);
+    int nSliceCosmicRays(this->GetNumberCosmicRaysChosenSlice(neutrinoPfos));
+
+    pandora::PfoList allConnectedPfos;
+    LArPfoHelper::GetAllConnectedPfos(neutrinoPfos, allConnectedPfos);
+
+    pandora::CaloHitList caloHitList;
+    LArPfoHelper::GetCaloHits(allConnectedPfos, TPC_3D, caloHitList);
+    int chosenSliceNumberHits(caloHitList.size());
+
+    std::cout << "chosenSliceNumberHits: " << chosenSliceNumberHits << std::endl;
+    std::cout << "nSliceCosmicRays: " << nSliceCosmicRays << std::endl;
+
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "TrueInteractionType", trueInteractionType));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "NeutrinoNuanceCode", neutrinoNuanceCode));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "TrueNeutrinoNumberAssociatedParticles", (int)trueNeutrinoPfos.size()));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "TrueNeutrinoNumberAssociatedTracks", nTrueNeutrinoAssociatedTracks));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "RecoNeutrinoNumberAssociatedParticles", (int)recoNeutrinoPrimaryDaughters.size()));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "RecoNeutrinoNumberAssociatedTracks", nRecoNeutrinoAssociatedTracks));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "ChosenSliceInteractionType", interactionTypeResemblance));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "ChosenSliceContainsTrueNeutrino", chosenSliceContainsNeutrino));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "ChosenSliceNumberCosmicRays", nSliceCosmicRays));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventDescription", "ChosenSliceNumberHits", chosenSliceNumberHits));
+    PANDORA_MONITORING_API(FillTree(this->GetPandora(), "EventDescription"));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+int EventSelectionAlgorithm::GetInteractionType(LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const
+{
+    MCParticleList mcPrimaryList;
+    for (const auto &mapEntry : nuMCParticlesToGoodHitsMap) mcPrimaryList.push_back(mapEntry.first);
+    mcPrimaryList.sort(LArMCParticleHelper::SortByMomentum);
+
+    if (mcPrimaryList.size() == 0)
+        return -1;
+
+    const LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(mcPrimaryList));
+    //return LArInteractionTypeHelper::ToString(interactionType);
+    return static_cast<int>(static_cast<unsigned int>(interactionType));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::PfoList EventSelectionAlgorithm::GetTrueNeutrinoAssociatedPfos(const pandora::PfoList* pPfoList, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const
+{
+    PfoList neutrinoPfos, trueNeutrinoPfos;
+    LArPfoHelper::GetRecoNeutrinos(pPfoList, neutrinoPfos);
+
+    for (const auto pPfo : *pPfoList)
+    {
+        if (pPfo == neutrinoPfos.front() || !LArPfoHelper::IsFinalState(pPfo))
+            continue;
+
+        const pandora::MCParticle* pMCParticle(this->GetMainMCParticle(pPfo));
+        const pandora::MCParticle* pPrimaryMCParticle = LArMCParticleHelper::GetPrimaryMCParticle(pMCParticle);
+        const pandora::MCParticle* pParentMCParticle = LArMCParticleHelper::GetParentMCParticle(pMCParticle);
+
+        bool mcParticleReconstructable = (nuMCParticlesToGoodHitsMap.find(pPrimaryMCParticle) != nuMCParticlesToGoodHitsMap.end()); 
+
+        if (mcParticleReconstructable && LArMCParticleHelper::IsNeutrino(pParentMCParticle))
+            trueNeutrinoPfos.insert(trueNeutrinoPfos.begin(), pPfo);
+    }
+
+    return trueNeutrinoPfos;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+int EventSelectionAlgorithm::CountTrackPfos(pandora::PfoList &pfoList) const
+{
+    int nTrackPfos(0);    
+
+    for (const auto pPfo : pfoList)
+    {
+        if (LArPfoHelper::IsTrack(pPfo))
+            ++nTrackPfos;
+    }
+
+    return nTrackPfos;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::PfoList EventSelectionAlgorithm::GetPrimaryDaughters(pandora::PfoList &neutrinoPfos, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const
+{
+    pandora::PfoList allConnectedPfos, primaryDaughters;
+    LArPfoHelper::GetAllConnectedPfos(neutrinoPfos, allConnectedPfos);
+
+    for (const auto pPfo : allConnectedPfos)
+    {
+        if (pPfo == neutrinoPfos.front() || !LArPfoHelper::IsFinalState(pPfo))
+            continue;
+
+        const pandora::MCParticle* pMCParticle(this->GetMainMCParticle(pPfo));
+        const pandora::MCParticle* pPrimaryMCParticle = LArMCParticleHelper::GetPrimaryMCParticle(pMCParticle);
+
+        bool mcParticleReconstructable = (nuMCParticlesToGoodHitsMap.find(pPrimaryMCParticle) != nuMCParticlesToGoodHitsMap.end()); 
+        
+        if (mcParticleReconstructable)
+            primaryDaughters.insert(primaryDaughters.begin(), pPfo);
+    }
+
+    return primaryDaughters;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+int EventSelectionAlgorithm::GetRecoNeutrinoInteractionTypeResemblance(pandora::PfoList &primaryDaughters, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const
+{
+    //Takes the PFOs in the reconstructed neutrino, their main MC particles, select the MC particles that are neutrino-induced, and construct an interaction type
+    pandora::MCParticleList mcPrimaryList;
+
+    for (const auto pPfo : primaryDaughters)
+    {
+        const pandora::MCParticle* pMCParticle(this->GetMainMCParticle(pPfo));
+        const pandora::MCParticle* pPrimaryMCParticle = LArMCParticleHelper::GetPrimaryMCParticle(pMCParticle);
+        const pandora::MCParticle* pParentMCParticle = LArMCParticleHelper::GetParentMCParticle(pMCParticle);
+
+        bool mcParticleInPrimariesList = (std::find(mcPrimaryList.begin(), mcPrimaryList.end(), pPrimaryMCParticle) != mcPrimaryList.end());
+        bool mcParticleReconstructable = (nuMCParticlesToGoodHitsMap.find(pPrimaryMCParticle) != nuMCParticlesToGoodHitsMap.end()); 
+
+        if (LArMCParticleHelper::IsNeutrino(pParentMCParticle) && !mcParticleInPrimariesList && mcParticleReconstructable)
+            mcPrimaryList.insert(mcPrimaryList.begin(), pPrimaryMCParticle);   
+    }
+
+    if (mcPrimaryList.size() == 0)
+        return -1;
+
+    LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(mcPrimaryList));
+    //std::string interactionTypeString(LArInteractionTypeHelper::ToString(interactionType));
+    return static_cast<int>(static_cast<unsigned int>(interactionType));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+int EventSelectionAlgorithm::GetNumberCosmicRaysChosenSlice(pandora::PfoList &neutrinoPfos) const
+{
+    int nCosmicRays(0);
+
+    pandora::PfoList allConnectedPfos;
+    LArPfoHelper::GetAllConnectedPfos(neutrinoPfos, allConnectedPfos);
+
+    for (const auto pPfo : allConnectedPfos)
+    {
+        if (pPfo == neutrinoPfos.front())
+            continue;
+
+        if (!pPfo->GetParentPfoList().empty() && pPfo->GetParentPfoList().front() != neutrinoPfos.front())
+            continue;
+
+        const pandora::MCParticle* pMCParticle(this->GetMainMCParticle(pPfo));
+        const pandora::MCParticle* pParentMCParticle = LArMCParticleHelper::GetParentMCParticle(pMCParticle);
+
+        if (LArMCParticleHelper::IsCosmicRay(pParentMCParticle))
+            ++nCosmicRays; 
+    }
+
+    return nCosmicRays;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 void EventSelectionAlgorithm::WriteNeutrinoInformation(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList) const
@@ -128,6 +320,8 @@ void EventSelectionAlgorithm::WriteTrueNeutrinoInformation(const pandora::MCPart
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TrueNeutrinos", "NuanceCode", nuanceCode));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TrueNeutrinos", "nDaughterParticles", nDaughterParticles));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TrueNeutrinos", "nDaughterTracks", nDaughterTracks));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TrueNeutrinos", "nReconstructableDaughterParticles", nReconstructableDaughterParticles));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TrueNeutrinos", "nReconstructableDaughterTracks", nReconstructableDaughterTracks));
     PANDORA_MONITORING_API(FillTree(this->GetPandora(), "TrueNeutrinos"));
 }
 
@@ -152,6 +346,7 @@ void EventSelectionAlgorithm::WriteReconstructedNeutrinoInformation(const pandor
 
     int nDaughterParticles(0), nDaughterTracks(0);
     int nReconstructableDaughterParticles(0), nReconstructableDaughterTracks(0);
+    int nHits(0), nReconstructableHits(0);
 
     for (const auto pPfo : allConnectedPfos)
     {
@@ -169,10 +364,18 @@ void EventSelectionAlgorithm::WriteReconstructedNeutrinoInformation(const pandor
         bool mcParticleInPrimariesList = (std::find(mcPrimaryList.begin(), mcPrimaryList.end(), pPrimaryMCParticle) != mcPrimaryList.end());
         bool mcParticleReconstructable = (nuMCParticlesToGoodHitsMap.find(pPrimaryMCParticle) != nuMCParticlesToGoodHitsMap.end()); 
 
+        pandora::CaloHitList pfoHits;
+        LArPfoHelper::GetCaloHits(pPfo, TPC_3D, pfoHits);
+        nHits += pfoHits.size();
+
         if (!mcParticleInPrimariesList && mcParticleReconstructable)
         {
             mcPrimaryList.insert(mcPrimaryList.begin(), pPrimaryMCParticle);   
             ++nReconstructableDaughterParticles;
+
+            pandora::CaloHitList reconstructablePfoHits;
+            LArPfoHelper::GetCaloHits(pPfo, TPC_3D, reconstructablePfoHits);
+            nReconstructableHits += reconstructablePfoHits.size();
 
             if (LArPfoHelper::IsTrack(pPfo))
                 ++nReconstructableDaughterTracks;
@@ -191,6 +394,10 @@ void EventSelectionAlgorithm::WriteReconstructedNeutrinoInformation(const pandor
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "ReconstructedNeutrinos", "InteractionType", static_cast<int>(static_cast<unsigned int>(interactionType))));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "ReconstructedNeutrinos", "nDaughterParticles", nDaughterParticles));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "ReconstructedNeutrinos", "nDaughterTracks", nDaughterTracks));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "ReconstructedNeutrinos", "nReconstructableDaughterParticles", nReconstructableDaughterParticles));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "ReconstructedNeutrinos", "nReconstructableDaughterTracks", nReconstructableDaughterTracks));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "ReconstructedNeutrinos", "nHits", nHits));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "ReconstructedNeutrinos", "nReconstructableHits", nReconstructableHits));
     PANDORA_MONITORING_API(FillTree(this->GetPandora(), "ReconstructedNeutrinos"));
 
     return;

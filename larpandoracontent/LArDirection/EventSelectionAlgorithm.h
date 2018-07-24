@@ -11,6 +11,7 @@
 
 #include "Pandora/Algorithm.h"
 #include "larpandoracontent/LArDirection/TrackDirectionTool.h"
+#include "larpandoracontent/LArHelpers/LArMCParticleHelper.h"
 
 namespace lar_content
 {
@@ -40,6 +41,22 @@ class EventSelectionAlgorithm : public pandora::Algorithm
 
     private:
         pandora::StatusCode Run();
+
+        void WriteEventDescription(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, const pandora::CaloHitList* pCaloHitList) const;
+
+        int GetInteractionType(LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
+
+        pandora::PfoList GetTrueNeutrinoAssociatedPfos(const pandora::PfoList* pPfoList, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
+
+        int CountTrackPfos(pandora::PfoList &pfoList) const;
+
+        pandora::PfoList GetPrimaryDaughters(pandora::PfoList &neutrinoPfos, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
+
+        int GetRecoNeutrinoInteractionTypeResemblance(pandora::PfoList &primaryDaughters, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
+
+        int GetNumberCosmicRaysChosenSlice(pandora::PfoList &primaryDaughters) const;
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         void WriteNeutrinoInformation(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList) const;
 

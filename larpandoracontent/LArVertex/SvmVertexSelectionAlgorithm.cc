@@ -110,19 +110,22 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
     float longestClusterDirectionProbability(0.5), minChiSquaredPerHit(100.0), longestClusterLength(1.f); 
     pandora::CartesianVector beginpointPosition(1.f, 1.f, 1.f);
 
-    try
+    if (m_enableDirectionFeatures)
     {
-        const pandora::Cluster* const pLongestCluster(m_pDirectionFlowProbabilityTool->GetLongestCluster(clustersW));
-        TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetClusterDirection(pLongestCluster); 
+        try
+        {
+            const pandora::Cluster* const pLongestCluster(m_pDirectionFlowProbabilityTool->GetLongestCluster(clustersW));
+            TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetClusterDirection(pLongestCluster); 
 
-        longestClusterDirectionProbability = (directionFit.GetProbability());
-        minChiSquaredPerHit = directionFit.GetMinChiSquaredPerHit();
-        longestClusterLength = LArClusterHelper::GetLength(pLongestCluster); 
-        beginpointPosition = (directionFit.GetBeginpoint());
-    }
-    catch (...)
-    {
-        std::cout << "Could not determine longest cluster direction probability." << std::endl;
+            longestClusterDirectionProbability = (directionFit.GetProbability());
+            minChiSquaredPerHit = directionFit.GetMinChiSquaredPerHit();
+            longestClusterLength = LArClusterHelper::GetLength(pLongestCluster); 
+            beginpointPosition = (directionFit.GetBeginpoint());
+        }
+        catch (...)
+        {
+            std::cout << "Could not determine longest cluster direction probability." << std::endl;
+        }
     }
 
     if (m_visualiseEvent)
