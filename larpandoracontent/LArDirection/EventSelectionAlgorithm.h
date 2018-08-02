@@ -46,13 +46,17 @@ class EventSelectionAlgorithm : public pandora::Algorithm
 
         int GetInteractionType(LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
 
-        pandora::PfoList GetTrueNeutrinoAssociatedPfos(const pandora::PfoList* pPfoList, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
+        std::tuple<int, int, int> GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const;
+
+        int CountTrueNeutrinoHits(pandora::CaloHitList &caloHitList, LArMCParticleHelper::CaloHitToMCMap &hitToMCMap) const;
+
+        pandora::PfoList GetTrueNeutrinoAssociatedPfos(const pandora::PfoList* pPfoList) const;
 
         int CountTrackPfos(pandora::PfoList &pfoList) const;
 
-        pandora::PfoList GetPrimaryDaughters(pandora::PfoList &neutrinoPfos, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
+        pandora::PfoList GetPrimaryDaughters(pandora::PfoList &neutrinoPfos) const;
 
-        int GetRecoNeutrinoInteractionTypeResemblance(pandora::PfoList &primaryDaughters, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
+        int GetInteractionTypeResemblance(pandora::PfoList &primaryDaughters, LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
 
         int GetNumberCosmicRaysChosenSlice(pandora::PfoList &primaryDaughters) const;
 
@@ -99,6 +103,11 @@ class EventSelectionAlgorithm : public pandora::Algorithm
         bool                m_writeToTree;
         std::string         m_treeName;
         std::string         m_fileName;
+
+        bool                m_viewEvent;
+
+        int                     m_fileIdentifier;
+        int                     m_eventNumber;
 
         TrackDirectionTool  *m_pTrackDirectionTool;
 };

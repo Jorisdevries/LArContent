@@ -50,6 +50,7 @@ EventValidationAlgorithm::~EventValidationAlgorithm()
         try
         {
             PANDORA_MONITORING_API(SaveTree(this->GetPandora(), m_treeName.c_str(), m_fileName.c_str(), "UPDATE"));
+            PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "EventSelection", m_fileName.c_str(), "UPDATE"));
         }
         catch (const StatusCodeException &)
         {
@@ -190,6 +191,11 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
 
     std::stringstream targetSS;
 
+    //TEST
+    int nNuParticleMatches(0), nMuonParticleMatches(0), nProtonParticleMatches(0);
+    int nNuTrackMatches(0), nMuonTrackMatches(0), nProtonTrackMatches(0);
+    int interactionTypeCopy(-1), nuanceCodeCopy(-1);
+  
     for (const MCParticle *const pMCPrimary : mcPrimaryVector)
     {
         const bool hasMatch(mcToPfoHitSharingMap.count(pMCPrimary) && !mcToPfoHitSharingMap.at(pMCPrimary).empty());
@@ -204,6 +210,10 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
         const CaloHitList &mcPrimaryHitList(validationInfo.GetAllMCParticleToHitsMap().at(pMCPrimary));
 
         const int mcNuanceCode(LArMCParticleHelper::GetNuanceCode(LArMCParticleHelper::GetParentMCParticle(pMCPrimary)));
+
+        if (LArMCParticleHelper::IsNeutrino(LArMCParticleHelper::GetParentMCParticle(pMCPrimary)))
+            nuanceCodeCopy = mcNuanceCode;
+
         const int isBeamNeutrinoFinalState(LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary));
         const int isBeamParticle(LArMCParticleHelper::IsBeamParticle(pMCPrimary));
         const int isCosmicRay(LArMCParticleHelper::IsCosmicRay(pMCPrimary));
@@ -242,6 +252,8 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
         nMCHitsW.push_back(LArMonitoringHelper::CountHitsByType(TPC_VIEW_W, mcPrimaryHitList));
 
         int matchIndex(0), nPrimaryMatches(0), nPrimaryNuMatches(0), nPrimaryCRMatches(0), nPrimaryGoodNuMatches(0), nPrimaryNuSplits(0);
+        //TEST
+        int nPrimaryTrackMatches(0);
 #ifdef MONITORING
         float recoVertexX(std::numeric_limits<float>::max()), recoVertexY(std::numeric_limits<float>::max()), recoVertexZ(std::numeric_limits<float>::max());
 #endif
@@ -286,6 +298,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
             }
 
             if (isGoodMatch) ++nPrimaryMatches;
+            if (isGoodMatch && LArPfoHelper::IsTrack(pfoToSharedHits.first)) ++nPrimaryTrackMatches;
 
             if (isRecoNeutrinoFinalState)
             {
@@ -322,6 +335,25 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
                      << " (" << LArMonitoringHelper::CountHitsByType(TPC_VIEW_U, pfoHitList)
                      << ", " << LArMonitoringHelper::CountHitsByType(TPC_VIEW_V, pfoHitList)
                      << ", " << LArMonitoringHelper::CountHitsByType(TPC_VIEW_W, pfoHitList) << ")" << std::endl;
+        }
+
+        //TEST
+        if (pMCPrimary->GetParticleId() == 13 && LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary))
+        {
+            nMuonParticleMatches = nPrimaryMatches;
+            nMuonTrackMatches = nPrimaryTrackMatches;
+        }
+
+        if (pMCPrimary->GetParticleId() == 2212 && LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary))
+        {
+            nProtonParticleMatches = nPrimaryMatches;
+            nProtonTrackMatches = nPrimaryTrackMatches;
+        }
+
+        if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary))
+        {
+            nNuParticleMatches += nPrimaryMatches;
+            nNuTrackMatches += nPrimaryTrackMatches;
         }
 
         if (mcToPfoHitSharingMap.at(pMCPrimary).empty())
@@ -405,6 +437,9 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
             const LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(associatedMCPrimaries));
 #ifdef MONITORING
             const int interactionTypeInt(static_cast<int>(interactionType));
+
+            if (isLastNeutrinoPrimary)
+                interactionTypeCopy = interactionTypeInt;
 #endif
             // ATTN Some redundancy introduced to contributing variables
             const int isCorrectNu(isBeamNeutrinoFinalState && (nTargetGoodNuMatches == nTargetNuMatches) && (nTargetGoodNuMatches == nTargetPrimaries) && (nTargetCRMatches == 0) && (nTargetNuSplits == 0) && (nTargetNuLosses == 0));
@@ -474,6 +509,32 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
             bestMatchPfoNSharedHitsTotal.clear(); bestMatchPfoNSharedHitsU.clear(); bestMatchPfoNSharedHitsV.clear(); bestMatchPfoNSharedHitsW.clear();
         }
     }
+
+    //TEST
+    if (fillTree)
+    {
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "fileIdentifier", m_fileIdentifier));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "eventNumber", m_eventNumber - 1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NeutrinoNuanceCode", nuanceCodeCopy));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueInteractionType", interactionTypeCopy));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueNeutrinoNumberAssociatedParticles", nNuParticleMatches));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueNeutrinoNumberAssociatedTracks", nNuTrackMatches));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueMuonMuonmberAssociatedParticles", nMuonParticleMatches));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueMuonMuonmberAssociatedTracks", nMuonTrackMatches));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueProtonProtonmberAssociatedParticles", nProtonParticleMatches));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueProtonProtonmberAssociatedTracks", nProtonTrackMatches));
+        PANDORA_MONITORING_API(FillTree(this->GetPandora(), "EventSelection"));
+    }
+
+    //TEST
+    std::cout << "NeutrinoNuanceCode: " << nuanceCodeCopy<< std::endl;
+    std::cout << "TrueInteractionType: " << interactionTypeCopy << std::endl;
+    std::cout << "nNuParticleMatches: " << nNuParticleMatches << std::endl;
+    std::cout << "nNuTrackMatches: " << nNuTrackMatches << std::endl;
+    std::cout << "nMuonParticleMatches: " << nMuonParticleMatches << std::endl;
+    std::cout << "nMuonTrackMatches: " << nMuonTrackMatches << std::endl;
+    std::cout << "nProtonParticleMatches: " << nProtonParticleMatches << std::endl;
+    std::cout << "nProtonTrackMatches: " << nProtonTrackMatches << std::endl;
 
     if (useInterpretedMatching)
     {
