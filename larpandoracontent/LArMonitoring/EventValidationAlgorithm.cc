@@ -527,6 +527,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
     }
 
     //TEST
+    /*
     std::cout << "NeutrinoNuanceCode: " << nuanceCodeCopy<< std::endl;
     std::cout << "TrueInteractionType: " << interactionTypeCopy << std::endl;
     std::cout << "nNuParticleMatches: " << nNuParticleMatches << std::endl;
@@ -535,6 +536,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
     std::cout << "nMuonTrackMatches: " << nMuonTrackMatches << std::endl;
     std::cout << "nProtonParticleMatches: " << nProtonParticleMatches << std::endl;
     std::cout << "nProtonTrackMatches: " << nProtonTrackMatches << std::endl;
+    */
 
     if (useInterpretedMatching)
     {

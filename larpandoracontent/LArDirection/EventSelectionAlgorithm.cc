@@ -56,7 +56,7 @@ StatusCode EventSelectionAlgorithm::Run()
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_pfoListName, pPfoList));
 
     this->WriteEventDescription(pMCParticleList, pPfoList, pCaloHitList);
-    this->WriteVariables(pPfoList, pCaloHitList);
+    this->WriteVariables(pPfoList);
     PANDORA_MONITORING_API(FillTree(this->GetPandora(), m_treeName.c_str()));
 
     //this->WriteNeutrinoInformation(pMCParticleList, pPfoList);
@@ -84,6 +84,28 @@ void EventSelectionAlgorithm::WriteEventDescription(const pandora::MCParticleLis
     pandora::PfoList trueNeutrinoPfos(this->GetTrueNeutrinoAssociatedPfos(pPfoList));  
     int nTrueNeutrinoAssociatedTracks(this->CountTrackPfos(trueNeutrinoPfos));
 
+    int firstNeutrinoPfoMCPDG(-1), secondNeutrinoPfoMCPDG(-1);
+    int firstNeutrinoPfoParentMCPDG(-1), secondNeutrinoPfoParentMCPDG(-1);
+   
+    try
+    {
+        if (trueNeutrinoPfos.size() > 0)
+        {
+            firstNeutrinoPfoMCPDG = LArMCParticleHelper::GetMainMCParticle(trueNeutrinoPfos.front())->GetParticleId();
+            firstNeutrinoPfoParentMCPDG = (LArMCParticleHelper::GetMainMCParticle(trueNeutrinoPfos.front()))->GetParentList().front()->GetParticleId();
+        }
+
+        if (trueNeutrinoPfos.size() > 1)
+        {
+            secondNeutrinoPfoMCPDG = LArMCParticleHelper::GetMainMCParticle(*(std::next(trueNeutrinoPfos.begin())))->GetParticleId();
+            secondNeutrinoPfoParentMCPDG = (LArMCParticleHelper::GetMainMCParticle(*(std::next(trueNeutrinoPfos.begin()))))->GetParentList().front()->GetParticleId();
+        }
+    }
+    catch (...)
+    {
+        std::cout << "Could not determine neutrino PFO PDGs" << std::endl;
+    }
+
     PfoList neutrinoPfos;
     LArPfoHelper::GetRecoNeutrinos(pPfoList, neutrinoPfos);
 
@@ -104,39 +126,37 @@ void EventSelectionAlgorithm::WriteEventDescription(const pandora::MCParticleLis
     LArPfoHelper::GetCaloHits(allConnectedPfos, TPC_3D, caloHitList);
     int chosenSliceNumberHits(caloHitList.size());
 
-    std::tuple<int, int, int> nTrueNeutrinoInducedHitsTuple(this->GetNeutrinoInducedHits(pMCParticleList, pPfoList, recoNeutrinoPrimaryDaughters, pCaloHitList));
+    std::vector<int> trueNeutrinoHitsVector(this->GetNeutrinoInducedHits(pMCParticleList, pPfoList, recoNeutrinoPrimaryDaughters, pCaloHitList));
+ 
+    int nTrueNeutrinoInducedHits(trueNeutrinoHitsVector.at(0)), nPfoClustersTrueNeutrinoHits(trueNeutrinoHitsVector.at(1)), nPfoIsolatedTrueNeutrinoHits(trueNeutrinoHitsVector.at(2)), nPfoAllTrueNeutrinoHits(trueNeutrinoHitsVector.at(3)), nRecoNuClustersTrueNeutrinoHits(trueNeutrinoHitsVector.at(4)),  nRecoNuIsolatedTrueNeutrinoHits(trueNeutrinoHitsVector.at(5)), nRecoNuAllTrueNeutrinoHits(trueNeutrinoHitsVector.at(6));
 
-    int nTrueNeutrinoInducedHits(std::get<0>(nTrueNeutrinoInducedHitsTuple)), nNeutrinoHitsInPfos(std::get<1>(nTrueNeutrinoInducedHitsTuple)), nNeutrinoHitsInRecoNeutrino(std::get<2>(nTrueNeutrinoInducedHitsTuple));
+    bool taggingFailure(this->IsTaggingFailure(pMCParticleList, pPfoList, pCaloHitList, nRecoNuAllTrueNeutrinoHits));
 
-    std::cout << "TrueInteractionType: " << LArInteractionTypeHelper::ToString(static_cast<LArInteractionTypeHelper::InteractionType>(trueInteractionType)) << std::endl;
-    std::cout << "chosenSliceNumberHits: " << chosenSliceNumberHits << std::endl;
-    std::cout << "nSliceCosmicRays: " << nSliceCosmicRays << std::endl;
-    std::cout << "nTrueNeutrinoInducedHits: " << nTrueNeutrinoInducedHits << std::endl;
-    std::cout << "nNeutrinoHitsInPfos: " << nNeutrinoHitsInPfos << std::endl;
-    std::cout << "nNeutrinoHitsInRecoNeutrino: " << nNeutrinoHitsInRecoNeutrino << std::endl;
-
-    if (recoNeutrinoPrimaryDaughters.size() == 1 && trueInteractionType == -1)
-    {
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-        std::cout << "!!!!!!!!!!!!!!!!!" << std::endl;
-    }
+    std::cout << "Reconstructed neutrino particle multiplicity: " << recoNeutrinoPrimaryDaughters.size() << std::endl;
+    std::cout << "True interaction type: " << LArInteractionTypeHelper::ToString(static_cast<LArInteractionTypeHelper::InteractionType>(trueInteractionType)) << std::endl;
+    std::cout << "Number of cosmic rays: " << nSliceCosmicRays << std::endl;
+    std::cout << "Tagging failure: " << taggingFailure << std::endl;
+    std::cout << "firstNeutrinoPfoMCPDG: " << firstNeutrinoPfoMCPDG << std::endl;
+    std::cout << "firstNeutrinoPfoParentMCPDG: " << firstNeutrinoPfoParentMCPDG << std::endl;
 
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "TrueInteractionType", trueInteractionType));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "NeutrinoNuanceCode", neutrinoNuanceCode));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "FirstNeutrinoPfoMCPDG", firstNeutrinoPfoMCPDG));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "SecondNeutrinoPfoMCPDG", secondNeutrinoPfoMCPDG));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "FirstNeutrinoPfoParentMCPDG", firstNeutrinoPfoParentMCPDG));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "SecondNeutrinoPfoParentMCPDG", secondNeutrinoPfoParentMCPDG));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "TrueNeutrinoNumberAssociatedParticles", (int)trueNeutrinoPfos.size()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "TrueNeutrinoNumberAssociatedTracks", nTrueNeutrinoAssociatedTracks));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "TrueNeutrinoNumberInducedHits", nTrueNeutrinoInducedHits));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "TrueNeutrinoNumberInducedHitsInPfos", nNeutrinoHitsInPfos));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "TrueNeutrinoNumberInducedHitsInRecoNeutrino", nNeutrinoHitsInRecoNeutrino));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "PfoClustersTrueNeutrinoHits", nPfoClustersTrueNeutrinoHits));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "PfoIsolatedTrueNeutrinoHits", nPfoIsolatedTrueNeutrinoHits));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "PfoAllTrueNeutrinoHits", nPfoAllTrueNeutrinoHits));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "RecoNuClustersTrueNeutrinoHits", nRecoNuClustersTrueNeutrinoHits));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "RecoNuIsolatedTrueNeutrinoHits", nRecoNuIsolatedTrueNeutrinoHits));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "RecoNuAllTrueNeutrinoHits", nRecoNuAllTrueNeutrinoHits));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "RecoNeutrinoNumberAssociatedParticles", (int)recoNeutrinoPrimaryDaughters.size()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "RecoNeutrinoNumberAssociatedTracks", nRecoNeutrinoAssociatedTracks));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "TaggingFailure", taggingFailure ? 1 : 0));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "ChosenSliceInteractionType", interactionTypeResemblance));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "ChosenSliceContainsTrueNeutrino", chosenSliceContainsNeutrino));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), m_treeName.c_str(), "ChosenSliceNumberCosmicRays", nSliceCosmicRays));
@@ -163,30 +183,129 @@ int EventSelectionAlgorithm::GetInteractionType(LArMCParticleHelper::MCContribut
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-std::tuple<int, int, int> EventSelectionAlgorithm::GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const
+std::vector<int> EventSelectionAlgorithm::GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const
 {
     LArMCParticleHelper::MCRelationMap mcPrimaryMap;
     LArMCParticleHelper::GetMCPrimaryMap(pMCParticleList, mcPrimaryMap);
 
     LArMCParticleHelper::CaloHitToMCMap hitToMCMap;
     LArMCParticleHelper::MCContributionMap mcToTrueHitListMap; 
-
     LArMCParticleHelper::GetMCParticleToCaloHitMatches(pCaloHitList, mcPrimaryMap, hitToMCMap, mcToTrueHitListMap);
 
-    pandora::CaloHitList caloHits, pfoHits, trueNeutrinoHits, recoNeutrinoHits;
-    LArPfoHelper::GetCaloHits(recoNeutrinoPrimaryDaughters, TPC_VIEW_W, recoNeutrinoHits);
-    LArPfoHelper::GetCaloHits(*pPfoList, TPC_VIEW_W, pfoHits);
+    pandora::PfoList allPfos;
+
+    for (const auto pPfo : *pPfoList)
+        allPfos.insert(allPfos.begin(), pPfo);
+
+    pandora::CaloHitList allCaloHits, allTrueNeutrinoHits;
 
     for (const auto pCaloHit : *pCaloHitList)
-        caloHits.insert(caloHits.begin(), pCaloHit);
+        allCaloHits.insert(allCaloHits.begin(), pCaloHit);
 
-    int nTrueNeutrinoInducedHits(this->CountTrueNeutrinoHits(caloHits, hitToMCMap)), nNeutrinoHitsInRecoNeutrino(this->CountTrueNeutrinoHits(recoNeutrinoHits, hitToMCMap)), nNeutrinoHitsInPfos(this->CountTrueNeutrinoHits(pfoHits, hitToMCMap));
+    allTrueNeutrinoHits = this->GetTrueNeutrinoHits(allCaloHits, hitToMCMap);
 
-    for (const auto pCaloHit : *pCaloHitList)
+    pandora::CaloHitList pfosAllHits, pfosClusterHits, pfosIsolatedHits;
+    pandora::CaloHitList recoNuAllHits, recoNuClusterHits, recoNuIsolatedHits;
+
+    this->GetClusterHits(allPfos, pfosClusterHits);
+    this->GetIsolatedHits(allPfos, pfosIsolatedHits);
+    this->MergeHitLists(pfosClusterHits, pfosIsolatedHits, pfosAllHits);
+
+    this->GetClusterHits(recoNeutrinoPrimaryDaughters, recoNuClusterHits);
+    this->GetIsolatedHits(recoNeutrinoPrimaryDaughters, recoNuIsolatedHits);
+    this->MergeHitLists(recoNuClusterHits, recoNuIsolatedHits, recoNuAllHits);
+
+    int nTrueNeutrinoInducedHits(this->GetTrueNeutrinoHits(allCaloHits, hitToMCMap).size()); 
+
+    int nPfoClustersTrueNeutrinoHits(this->GetTrueNeutrinoHits(pfosClusterHits, hitToMCMap).size()), nPfoIsolatedTrueNeutrinoHits(this->GetTrueNeutrinoHits(pfosIsolatedHits, hitToMCMap).size()), nPfoAllTrueNeutrinoHits(this->GetTrueNeutrinoHits(pfosAllHits, hitToMCMap).size());
+
+    int nRecoNuClustersTrueNeutrinoHits(this->GetTrueNeutrinoHits(recoNuClusterHits, hitToMCMap).size()), nRecoNuIsolatedTrueNeutrinoHits(this->GetTrueNeutrinoHits(recoNuIsolatedHits, hitToMCMap).size()), nRecoNuAllTrueNeutrinoHits(this->GetTrueNeutrinoHits(recoNuAllHits, hitToMCMap).size());
+
+    std::cout << "------------------------------------" << std::endl;
+    std::cout << "nTrueNeutrinoInducedHits: " << nTrueNeutrinoInducedHits << std::endl;
+    //std::cout << "nPfoClustersTrueNeutrinoHits: " << nPfoClustersTrueNeutrinoHits << std::endl;
+    //std::cout << "nPfoIsolatedTrueNeutrinoHits: " << nPfoIsolatedTrueNeutrinoHits << std::endl;
+    std::cout << "nPfoAllTrueNeutrinoHits: " << nPfoAllTrueNeutrinoHits << std::endl;
+    //std::cout << "nRecoNuClustersTrueNeutrinoHits: " << nRecoNuClustersTrueNeutrinoHits << std::endl;
+    //std::cout << "nRecoNuIsolatedTrueNeutrinoHits: " << nRecoNuIsolatedTrueNeutrinoHits << std::endl;
+    std::cout << "nRecoNuAllTrueNeutrinoHits: " << nRecoNuAllTrueNeutrinoHits << std::endl;
+    std::cout << "------------------------------------" << std::endl;
+
+
+   if (m_viewEvent)
+   {
+       pandora::CaloHitList allCaloHitsToDraw, trueNeutrinoHitsToDraw, recoNuHitsToDraw;
+
+        for (const auto pCaloHit : *pCaloHitList)
+        {
+            if (pCaloHit->GetHitType() != TPC_VIEW_W)
+                continue;
+
+            allCaloHitsToDraw.insert(allCaloHitsToDraw.begin(), pCaloHit);
+
+            try
+            {
+                const pandora::MCParticle* pMCParticle(hitToMCMap.at(pCaloHit));
+                const pandora::MCParticle* pParentMCParticle = LArMCParticleHelper::GetParentMCParticle(pMCParticle);
+
+                if (LArMCParticleHelper::IsNeutrino(pParentMCParticle))
+                    trueNeutrinoHitsToDraw.insert(trueNeutrinoHitsToDraw.begin(), pCaloHit);
+            }
+            catch (...)
+            {
+                continue;
+            }
+        }
+
+       LArPfoHelper::GetCaloHits(recoNeutrinoPrimaryDaughters, TPC_VIEW_W, recoNuHitsToDraw);
+       LArPfoHelper::GetIsolatedCaloHits(recoNeutrinoPrimaryDaughters, TPC_VIEW_W, recoNuHitsToDraw);
+
+       PANDORA_MONITORING_API(VisualizeCaloHits(this->GetPandora(), &allCaloHitsToDraw, "CaloHits", BLACK)); 
+       PANDORA_MONITORING_API(VisualizeCaloHits(this->GetPandora(), &trueNeutrinoHitsToDraw, "TrueNeutrinoHits", RED)); 
+       PANDORA_MONITORING_API(VisualizeCaloHits(this->GetPandora(), &recoNuHitsToDraw, "RecoNeutrinoHits", BLUE)); 
+       PANDORA_MONITORING_API(ViewEvent(this->GetPandora())); 
+   }
+
+    std::vector<int> trueNeutrinoHitsVector = {nTrueNeutrinoInducedHits, nPfoClustersTrueNeutrinoHits, nPfoIsolatedTrueNeutrinoHits, nPfoAllTrueNeutrinoHits, nRecoNuClustersTrueNeutrinoHits, nRecoNuIsolatedTrueNeutrinoHits, nRecoNuAllTrueNeutrinoHits};
+
+    return trueNeutrinoHitsVector;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventSelectionAlgorithm::GetClusterHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList) const
+{
+    LArPfoHelper::GetCaloHits(pfoList, TPC_VIEW_U, caloHitList);
+    LArPfoHelper::GetCaloHits(pfoList, TPC_VIEW_V, caloHitList);
+    LArPfoHelper::GetCaloHits(pfoList, TPC_VIEW_W, caloHitList);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventSelectionAlgorithm::GetIsolatedHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList) const
+{
+    LArPfoHelper::GetIsolatedCaloHits(pfoList, TPC_VIEW_U, caloHitList);
+    LArPfoHelper::GetIsolatedCaloHits(pfoList, TPC_VIEW_V, caloHitList);
+    LArPfoHelper::GetIsolatedCaloHits(pfoList, TPC_VIEW_W, caloHitList);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventSelectionAlgorithm::MergeHitLists(pandora::CaloHitList &clusterHitList, pandora::CaloHitList &isolatedHitList, pandora::CaloHitList &combinedHitList) const
+{
+    combinedHitList = clusterHitList;
+    pandora::CaloHitList isolatedCaloHitsCopy = isolatedHitList;
+    combinedHitList.splice(combinedHitList.begin(), isolatedCaloHitsCopy);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::CaloHitList EventSelectionAlgorithm::GetTrueNeutrinoHits(pandora::CaloHitList &hitList, LArMCParticleHelper::CaloHitToMCMap &hitToMCMap) const
+{
+    pandora::CaloHitList trueNeutrinoHits;
+
+    for (const auto pCaloHit : hitList)
     {
-        if (pCaloHit->GetHitType() != TPC_VIEW_W)
-            continue;
-
         try
         {
             const pandora::MCParticle* pMCParticle(hitToMCMap.at(pCaloHit));
@@ -201,48 +320,54 @@ std::tuple<int, int, int> EventSelectionAlgorithm::GetNeutrinoInducedHits(const 
         }
     }
 
-   if (m_viewEvent)
-   {
-       PANDORA_MONITORING_API(VisualizeCaloHits(this->GetPandora(), &caloHits, "CaloHits", BLACK)); 
-       PANDORA_MONITORING_API(VisualizeCaloHits(this->GetPandora(), &trueNeutrinoHits, "TrueNeutrinoHits", RED)); 
-       PANDORA_MONITORING_API(VisualizeCaloHits(this->GetPandora(), &recoNeutrinoHits, "RecoNeutrinoHits", BLUE)); 
-       PANDORA_MONITORING_API(ViewEvent(this->GetPandora())); 
-   }
-
-    std::cout << "nTrueNeutrinoInducedHits: " << nTrueNeutrinoInducedHits << std::endl;
-    std::cout << "nNeutrinoHitsInRecoNeutrino: " << nNeutrinoHitsInRecoNeutrino << std::endl;
-    std::cout << "nNeutrinoHitsInPfos: " << nNeutrinoHitsInPfos << std::endl;
-
-    return std::make_tuple(nTrueNeutrinoInducedHits, nNeutrinoHitsInPfos, nNeutrinoHitsInRecoNeutrino);
+    return trueNeutrinoHits;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-int EventSelectionAlgorithm::CountTrueNeutrinoHits(pandora::CaloHitList &hitList, LArMCParticleHelper::CaloHitToMCMap &hitToMCMap) const
+bool EventSelectionAlgorithm::IsTaggingFailure(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, const pandora::CaloHitList* pCaloHitList, int nRecoNuAllTrueNeutrinoHits) const 
 {
-    int nTrueNeutrinoHits(0);
+    LArMCParticleHelper::MCRelationMap mcPrimaryMap;
+    LArMCParticleHelper::GetMCPrimaryMap(pMCParticleList, mcPrimaryMap);
 
-    for (const auto pCaloHit : hitList)
+    LArMCParticleHelper::CaloHitToMCMap hitToMCMap;
+    LArMCParticleHelper::MCContributionMap mcToTrueHitListMap; 
+    LArMCParticleHelper::GetMCParticleToCaloHitMatches(pCaloHitList, mcPrimaryMap, hitToMCMap, mcToTrueHitListMap);
+
+    bool taggingFailure(false);
+
+    std::cout << "------------------------------------" << std::endl;
+
+    for (const auto pPfo : *pPfoList)
     {
-        if (pCaloHit->GetHitType() != TPC_VIEW_W)
-            continue;
+        pandora::PfoList thisPfo;
+        thisPfo.insert(thisPfo.begin(), pPfo);
 
-        try
-        {
-            const pandora::MCParticle* pMCParticle(hitToMCMap.at(pCaloHit));
-            const pandora::MCParticle* pParentMCParticle = LArMCParticleHelper::GetParentMCParticle(pMCParticle);
+        if (LArPfoHelper::IsNeutrino(pPfo))
+            std::cout << "PFO hypothesis: NEUTRINO" << std::endl;
+        else
+            std::cout << "PFO hypothesis: COSMIC RAY" << std::endl;
 
-            if (LArMCParticleHelper::IsNeutrino(pParentMCParticle))
-                ++nTrueNeutrinoHits;
-        }
-        catch (...)
-        {
-            continue;
-        }
-    }
+        pandora::CaloHitList thisPfoAllHits, thisPfoClusterHits, thisPfoIsolatedHits;
 
-    return nTrueNeutrinoHits;
+        this->GetClusterHits(thisPfo, thisPfoClusterHits);
+        this->GetIsolatedHits(thisPfo, thisPfoIsolatedHits);
+        this->MergeHitLists(thisPfoClusterHits, thisPfoIsolatedHits, thisPfoAllHits);
+        
+        int nThisPfoClustersTrueNeutrinoHits(this->GetTrueNeutrinoHits(thisPfoClusterHits, hitToMCMap).size()), nThisPfoIsolatedTrueNeutrinoHits(this->GetTrueNeutrinoHits(thisPfoIsolatedHits, hitToMCMap).size()), nThisPfoAllTrueNeutrinoHits(this->GetTrueNeutrinoHits(thisPfoAllHits, hitToMCMap).size());
+
+        if (!LArPfoHelper::IsNeutrino(pPfo) && nThisPfoAllTrueNeutrinoHits > nRecoNuAllTrueNeutrinoHits)
+            taggingFailure = true;
+
+        std::cout << "This PFO total number true nu hits: " << nThisPfoClustersTrueNeutrinoHits << std::endl;
+        std::cout << "This PFO number isolated true nu hits: " << nThisPfoIsolatedTrueNeutrinoHits << std::endl;
+        std::cout << "This PFO number cluster true nu hits: " << nThisPfoAllTrueNeutrinoHits << std::endl;
+        std::cout << "********************************************" << std::endl;
+    } 
+
+    return taggingFailure;
 }
+
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 pandora::PfoList EventSelectionAlgorithm::GetTrueNeutrinoAssociatedPfos(const pandora::PfoList* pPfoList) const
@@ -573,10 +698,14 @@ const MCParticle* EventSelectionAlgorithm::GetMainMCParticle(const ParticleFlowO
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void EventSelectionAlgorithm::WriteVariables(const pandora::PfoList* pPfoList, const pandora::CaloHitList *pCaloHitList) const
+void EventSelectionAlgorithm::WriteVariables(const pandora::PfoList* pPfoList) const
 {
-    PfoList allConnectedPfos;
-    LArPfoHelper::GetAllConnectedPfos(*pPfoList, allConnectedPfos);
+    PfoList neutrinoPfos;
+    LArPfoHelper::GetRecoNeutrinos(pPfoList, neutrinoPfos);
+
+    if (neutrinoPfos.size() != 1) return;
+
+    pandora::PfoList recoNeutrinoPrimaryDaughters(this->GetPrimaryDaughters(neutrinoPfos));
 
     //Get interaction type
     int interactionType(GetInteractionType());
@@ -584,30 +713,33 @@ void EventSelectionAlgorithm::WriteVariables(const pandora::PfoList* pPfoList, c
 
     //Get number of tracks and showers
     int nTracks(0), nShowers(0);
-    GetNumberTracksAndShowers(allConnectedPfos, nTracks, nShowers);
+    GetNumberTracksAndShowers(recoNeutrinoPrimaryDaughters, nTracks, nShowers);
 
     //Get total event charge
-    const float totalEventCharge(GetTotalEventCharge(pCaloHitList));
+    float totalEventCharge(0.f);
+
+    for (const auto pPfo : recoNeutrinoPrimaryDaughters)
+        totalEventCharge += GetPfoCharge(pPfo);
 
     //Get shortest and longest PFO
-    const pandora::ParticleFlowObject* pLongestPfo(GetLongestPfo(allConnectedPfos));
-    const pandora::ParticleFlowObject* pShortestPfo(GetShortestPfo(allConnectedPfos));
+    const pandora::ParticleFlowObject* pLongestPfo(GetLongestPfo(recoNeutrinoPrimaryDaughters));
+    const pandora::ParticleFlowObject* pShortestPfo(GetShortestPfo(recoNeutrinoPrimaryDaughters));
 
     //Longest and shortest pfo total charges
-    const float shortestPfoCharge(GetPfoCharge(pShortestPfo));
-    const float longestPfoCharge(GetPfoCharge(pLongestPfo));
+    float shortestPfoCharge(GetPfoCharge(pShortestPfo));
+    float longestPfoCharge(GetPfoCharge(pLongestPfo));
 
     //longest pfo opening angle with beamline
-    const float thetaBeamPfo(GetThetaBeamPfo(pLongestPfo));
+    float thetaBeamPfo(GetThetaBeamPfo(pLongestPfo));
 
     //longest and shortest pfo opening angle
-    const float phiPfoOpeningAngle(GetPfoOpeningAngle(pLongestPfo, pShortestPfo));
+    float phiPfoOpeningAngle(GetPfoOpeningAngle(pLongestPfo, pShortestPfo));
 
     //longest and shortest pfo lengths 
-    const float shortestPfoLength(LArPfoHelper::GetThreeDLengthSquared(pShortestPfo)), longestPfoLength(LArPfoHelper::GetThreeDLengthSquared(pLongestPfo));
+    float shortestPfoLength(std::sqrt(LArPfoHelper::GetThreeDLengthSquared(pShortestPfo))), longestPfoLength(std::sqrt(LArPfoHelper::GetThreeDLengthSquared(pLongestPfo)));
 
     //longitudinal and transverse momenta
-    pandora::CartesianVector neutrinoMomentum(GetApproximateNeutrinoMomentum(pPfoList, pLongestPfo));
+    pandora::CartesianVector neutrinoMomentum(GetApproximateNeutrinoMomentum(recoNeutrinoPrimaryDaughters, pLongestPfo));
 
     //dE/dx fit variables
     TrackDirectionTool::DirectionFitObject fitResult = m_pTrackDirectionTool->GetPfoDirection(pLongestPfo);
@@ -796,14 +928,14 @@ float EventSelectionAlgorithm::GetPfoOpeningAngle(const pandora::ParticleFlowObj
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-pandora::CartesianVector EventSelectionAlgorithm::GetApproximateNeutrinoMomentum(const pandora::PfoList* pPfoList, const pandora::ParticleFlowObject* pLongestPfo) const
+pandora::CartesianVector EventSelectionAlgorithm::GetApproximateNeutrinoMomentum(pandora::PfoList pfoList, const pandora::ParticleFlowObject* pLongestPfo) const
 {
     const float muonMass(105.7), protonMass(938.3);
     CartesianVector muonMomentum(GetApproximatePfoMomentum(pLongestPfo, muonMass)); 
 
     pandora::CartesianVector neutrinoMomentum = muonMomentum;
 
-    for (const auto pPfo : *pPfoList)
+    for (const auto pPfo : pfoList)
     {
         if (pPfo == pLongestPfo)
             continue;

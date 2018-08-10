@@ -46,9 +46,17 @@ class EventSelectionAlgorithm : public pandora::Algorithm
 
         int GetInteractionType(LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
 
-        std::tuple<int, int, int> GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const;
+        std::vector<int> GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const;
 
-        int CountTrueNeutrinoHits(pandora::CaloHitList &caloHitList, LArMCParticleHelper::CaloHitToMCMap &hitToMCMap) const;
+        void GetClusterHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList) const;
+
+        void GetIsolatedHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList) const;
+
+        void MergeHitLists(pandora::CaloHitList &clusterHitList, pandora::CaloHitList &isolatedHitList, pandora::CaloHitList &combinedHitList) const;
+
+        pandora::CaloHitList GetTrueNeutrinoHits(pandora::CaloHitList &hitList, LArMCParticleHelper::CaloHitToMCMap &hitToMCMap) const;
+
+        bool IsTaggingFailure(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, const pandora::CaloHitList* pCaloHitList, int nRecoNuAllTrueNeutrinoHits) const;
 
         pandora::PfoList GetTrueNeutrinoAssociatedPfos(const pandora::PfoList* pPfoList) const;
 
@@ -72,7 +80,7 @@ class EventSelectionAlgorithm : public pandora::Algorithm
 
         //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
-        void WriteVariables(const pandora::PfoList* pPfoList, const pandora::CaloHitList *pCaloHitList) const;
+        void WriteVariables(const pandora::PfoList* pPfoList) const;
 
         int GetInteractionType() const;
 
@@ -90,7 +98,7 @@ class EventSelectionAlgorithm : public pandora::Algorithm
 
         float GetPfoOpeningAngle(const pandora::ParticleFlowObject* pPfo1, const pandora::ParticleFlowObject* pPfo2) const;
 
-        pandora::CartesianVector GetApproximateNeutrinoMomentum(const pandora::PfoList* pPfoList, const pandora::ParticleFlowObject* pLongestPfo) const; 
+        pandora::CartesianVector GetApproximateNeutrinoMomentum(pandora::PfoList pfoList, const pandora::ParticleFlowObject* pLongestPfo) const; 
 
         pandora::CartesianVector GetApproximatePfoMomentum(const pandora::ParticleFlowObject* pLongestPfo, const float &particleMass) const; 
 
