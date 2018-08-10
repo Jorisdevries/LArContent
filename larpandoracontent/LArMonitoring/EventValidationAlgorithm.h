@@ -164,7 +164,6 @@ private:
      *  @param  validationInfo the validation info
      *  @param  useInterpretedMatching whether to use the interpreted (rather than raw) matching information
      *  @param  printToScreen whether to print the information to screen
-     *  @param  fillTree whether to write the information to tree
      */
     void ProcessOutput(const ValidationInfo &validationInfo, const bool useInterpretedMatching, const bool printToScreen, const bool fillTree) const;
 
@@ -211,6 +210,61 @@ private:
      */
     bool IsGoodMatch(const pandora::CaloHitList &trueHits, const pandora::CaloHitList &recoHits, const pandora::CaloHitList &sharedHits) const;
 
+    //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    //NEW CODE
+    void WriteEventDescription(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, const pandora::CaloHitList* pCaloHitList) const;
+
+    int GetInteractionType(LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
+
+    std::vector<int> GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const;
+
+    void GetClusterHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList) const;
+
+    void GetIsolatedHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList) const;
+
+    void MergeHitLists(pandora::CaloHitList &clusterHitList, pandora::CaloHitList &isolatedHitList, pandora::CaloHitList &combinedHitList) const;
+
+    pandora::CaloHitList GetTrueNeutrinoHits(pandora::CaloHitList &hitList, LArMCParticleHelper::CaloHitToMCMap &hitToMCMap) const;
+
+    bool IsTaggingFailure(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, const pandora::CaloHitList* pCaloHitList, int nRecoNuAllTrueNeutrinoHits) const;
+
+    pandora::PfoList GetTrueNeutrinoAssociatedPfos(const pandora::PfoList* pPfoList) const;
+
+    int CountTrackPfos(pandora::PfoList &pfoList) const;
+
+    pandora::PfoList GetPrimaryDaughters(pandora::PfoList &neutrinoPfos) const;
+
+    int GetNumberCosmicRaysChosenSlice(pandora::PfoList &primaryDaughters) const;
+
+    static const pandora::MCParticle *GetMainMCParticle(const pandora::ParticleFlowObject *const pPfo);
+
+    //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    void WriteVariables(const pandora::PfoList* pPfoList) const;
+
+    int GetInteractionType() const;
+
+    void GetNumberTracksAndShowers(pandora::PfoList pfoList, int &nTracks, int &nShowers) const;
+
+    float GetTotalEventCharge(const pandora::CaloHitList *const pCaloHitList) const;
+
+    const pandora::ParticleFlowObject* GetLongestPfo(pandora::PfoList pfoList) const;
+
+    const pandora::ParticleFlowObject* GetShortestPfo(pandora::PfoList pfoList) const;
+
+    float GetPfoCharge(const pandora::ParticleFlowObject* pPfo) const;
+
+    float GetThetaBeamPfo(const pandora::ParticleFlowObject* pPfo) const;
+
+    float GetPfoOpeningAngle(const pandora::ParticleFlowObject* pPfo1, const pandora::ParticleFlowObject* pPfo2) const;
+
+    pandora::CartesianVector GetApproximateNeutrinoMomentum(pandora::PfoList pfoList, const pandora::ParticleFlowObject* pLongestPfo) const; 
+
+    pandora::CartesianVector GetApproximatePfoMomentum(const pandora::ParticleFlowObject* pLongestPfo, const float &particleMass) const; 
+
+    //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
     pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
     typedef std::vector<pandora::HitType> HitTypeVector;
@@ -235,6 +289,8 @@ private:
     unsigned int            m_matchingMinSharedHits;        ///< The minimum number of shared hits used in matching scheme
     float                   m_matchingMinCompleteness;      ///< The minimum particle completeness to declare a match
     float                   m_matchingMinPurity;            ///< The minimum particle purity to declare a match
+
+    bool                    m_viewEvent;                    ///< Whether to draw the W CaloHits, True Nu hits and Nu Reco hits
 
     std::string             m_treeName;                     ///< Name of output tree
     std::string             m_fileName;                     ///< Name of output file
