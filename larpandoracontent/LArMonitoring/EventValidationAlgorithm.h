@@ -12,6 +12,9 @@
 
 #include "larpandoracontent/LArHelpers/LArMCParticleHelper.h"
 
+#include "larpandoracontent/LArDirection/TrackDirectionTool.h"
+#include "larpandoracontent/LArTrackShowerId/TrackShowerIdFeatureTool.h"
+
 #ifdef MONITORING
 #include "PandoraMonitoringApi.h"
 #endif
@@ -217,6 +220,8 @@ private:
 
     int GetInteractionType(LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
 
+    float CalculateTrackProbability(const pandora::ParticleFlowObject *const pPfo) const;
+
     std::vector<int> GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const;
 
     void GetClusterHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList) const;
@@ -255,7 +260,11 @@ private:
 
     float GetPfoCharge(const pandora::ParticleFlowObject* pPfo) const;
 
+    int CountPfoHits(const pandora::ParticleFlowObject* pPfo) const;
+
     float GetThetaBeamPfo(const pandora::ParticleFlowObject* pPfo) const;
+
+    float GetAngleXAxis(const pandora::ParticleFlowObject* pPfo) const;
 
     float GetPfoOpeningAngle(const pandora::ParticleFlowObject* pPfo1, const pandora::ParticleFlowObject* pPfo2) const;
 
@@ -297,6 +306,9 @@ private:
 
     int                     m_fileIdentifier;               ///< The input file identifier
     int                     m_eventNumber;                  ///< The event number
+
+    //Track direction
+    TrackDirectionTool      *m_pTrackDirectionTool;
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------

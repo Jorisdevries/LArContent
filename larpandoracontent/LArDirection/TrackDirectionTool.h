@@ -224,10 +224,13 @@ public:
 
         void SetForwardsFitCharges(TrackDirectionTool::HitChargeVector hitChargeVector);
         void SetBackwardsFitCharges(TrackDirectionTool::HitChargeVector hitChargeVector);
+
         float GetForwardsChiSquared();
         float GetBackwardsChiSquared();
+
         void SetForwardsChiSquared(float forwardsChiSquared);
         void SetBackwardsChiSquared(float backwardsChiSquared);
+
         float GetForwardsChiSquaredPerHit();
         float GetBackwardsChiSquaredPerHit();
 
@@ -237,7 +240,10 @@ public:
 
         float GetMinChiSquared();
         float GetMinChiSquaredPerHit();
+
         float GetDeltaChiSquaredPerHit();
+        float GetUpDownDeltaChiSquaredPerHit();
+
         float GetMeanChargeOverWidth();
 
         void SetBeginpoint(const pandora::CartesianVector &beginPoint);
@@ -1076,6 +1082,23 @@ inline float TrackDirectionTool::DirectionFitObject::GetMinChiSquaredPerHit()
 inline float TrackDirectionTool::DirectionFitObject::GetDeltaChiSquaredPerHit()
 {
     return (m_nhits != 0 ? (m_forwardschisquared - m_backwardschisquared)/m_nhits : std::numeric_limits<float>::max());
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float TrackDirectionTool::DirectionFitObject::GetUpDownDeltaChiSquaredPerHit()
+{
+    const pandora::CartesianVector beginPoint(m_beginx, m_beginy, m_beginz);
+    const pandora::CartesianVector endPoint(m_endx, m_endy, m_endz);
+
+    float forwardsChiSquaredPerHit(m_forwardschisquared/m_nhits), backwardsChiSquaredPerHit(m_backwardschisquared/m_nhits);
+
+    int recoDownwards(endPoint.GetY() < beginPoint.GetY() ? 1 : 0);
+
+    float upwardsChiSquaredPerHit(recoDownwards == 0 ? forwardsChiSquaredPerHit : backwardsChiSquaredPerHit), downwardsChiSquaredPerHit(recoDownwards == 1 ? forwardsChiSquaredPerHit : backwardsChiSquaredPerHit);
+    float updownDeltaChiSquaredPerHit(downwardsChiSquaredPerHit - upwardsChiSquaredPerHit); 
+
+    return updownDeltaChiSquaredPerHit;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

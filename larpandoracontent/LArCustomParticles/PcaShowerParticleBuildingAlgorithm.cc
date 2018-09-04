@@ -71,6 +71,7 @@ void PcaShowerParticleBuildingAlgorithm::CreatePfo(const ParticleFlowObject *con
         pfoParameters.m_showerEigenValues = showerPCA.GetEigenValues();
         pfoParameters.m_showerLength = showerPCA.GetAxisLengths();
         pfoParameters.m_showerOpeningAngle = (showerPCA.GetPrimaryLength() > 0.f ? std::atan(showerPCA.GetSecondaryLength() / showerPCA.GetPrimaryLength()) : 0.f);
+        pfoParameters.m_propertiesToAdd = pInputPfo->GetPropertiesMap();
 
         PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, pOutputPfo,
             pfoFactory));
