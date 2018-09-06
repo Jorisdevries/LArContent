@@ -220,6 +220,8 @@ private:
 
     int GetInteractionType(LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap) const;
 
+    float CalculateCosmicProbability(TrackDirectionTool::DirectionFitObject &directionFit) const;
+
     float CalculateTrackProbability(const pandora::ParticleFlowObject *const pPfo) const;
 
     std::vector<int> GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const;
