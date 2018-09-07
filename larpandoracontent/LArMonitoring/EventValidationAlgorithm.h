@@ -250,6 +250,12 @@ private:
 
     void WriteVariables(const pandora::PfoList* pPfoList) const;
 
+    void WriteEventVariables(pandora::PfoList &recoNeutrinoPrimaryDaughters) const;
+
+    void WriteTopologicalVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
+
+    void WriteDirectionFitVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
+
     int GetInteractionType() const;
 
     void GetNumberTracksAndShowers(pandora::PfoList pfoList, int &nTracks, int &nShowers) const;
@@ -300,6 +306,8 @@ private:
     unsigned int            m_matchingMinSharedHits;        ///< The minimum number of shared hits used in matching scheme
     float                   m_matchingMinCompleteness;      ///< The minimum particle completeness to declare a match
     float                   m_matchingMinPurity;            ///< The minimum particle purity to declare a match
+
+    int                     m_slidingFitWindow;
 
     bool                    m_viewEvent;                    ///< Whether to draw the W CaloHits, True Nu hits and Nu Reco hits
 

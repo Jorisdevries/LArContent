@@ -122,18 +122,16 @@ public:
         public:
         
             FitParameters();
-            FitParameters(float parameterZero, float parameterOne, float parameterTwo, float parameterThree);
+            FitParameters(float parameterZero, float parameterOne, float parameterTwo);
 
             float GetParameterZero();
             float GetParameterOne();
             float GetParameterTwo();
-            float GetParameterThree();
 
         private:
             float   m_parameterzero;
             float   m_parameterone;
             float   m_parametertwo;
-            float   m_parameterthree;
     };
 
     class SplitObject
@@ -639,18 +637,16 @@ inline float TrackDirectionTool::HitCharge::GetBackwardsChiSquared()
 inline TrackDirectionTool::FitParameters::FitParameters() :
     m_parameterzero(0.f),
     m_parameterone(0.f),
-    m_parametertwo(0.f),
-    m_parameterthree(0.f)
+    m_parametertwo(0.f)
 {
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline TrackDirectionTool::FitParameters::FitParameters(float parameterZero, float parameterOne, float parameterTwo, float parameterThree) :
+inline TrackDirectionTool::FitParameters::FitParameters(float parameterZero, float parameterOne, float parameterTwo) :
     m_parameterzero(parameterZero),
     m_parameterone(parameterOne),
-    m_parametertwo(parameterTwo),
-    m_parameterthree(parameterThree)
+    m_parametertwo(parameterTwo)
 {
 }
 
@@ -673,13 +669,6 @@ inline float TrackDirectionTool::FitParameters::GetParameterOne()
 inline float TrackDirectionTool::FitParameters::GetParameterTwo()
 {
     return m_parametertwo;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline float TrackDirectionTool::FitParameters::GetParameterThree()
-{
-    return m_parameterthree;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

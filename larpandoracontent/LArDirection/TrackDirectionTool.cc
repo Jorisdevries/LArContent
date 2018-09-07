@@ -70,7 +70,7 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
     {
         if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits)
         {
-            std::cout << "Not enough hits" << std::endl;
+            std::cout << "Direction fit error: not enough hits" << std::endl;
             throw STATUS_CODE_FAILURE;
         }
 
@@ -1480,12 +1480,12 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     double maxScale(globalMuonLookupTable.GetMaxRange()/globalTrackLength);
     LookupTable lookupTable = globalMuonLookupTable;
 
-    const int nParameters = 4;
-    const std::string parName[nParameters]   = {"ENDENERGY", "SCALE", "MASS", "EXTRA"};
-    const double vstart[nParameters] = {10.1, 1.0, 110.0, 1.0};
-    const double step[nParameters] = {1.e-1, 1.e-1, 1.e-1, 1.e-1};
-    const double lowphysbound[nParameters] = {10.0, 0.01, 105.0, 0.1};
-    const double highphysbound[nParameters] = {1.0e3, maxScale, 1.0e3, 1.0e1};
+    const int nParameters = 3;
+    const std::string parName[nParameters]   = {"ENDENERGY", "SCALE", "MASS"};
+    const double vstart[nParameters] = {10.1, 1.0, 110.0};
+    const double step[nParameters] = {1.e-1, 1.e-1, 1.e-1};
+    const double lowphysbound[nParameters] = {10.0, 0.01, 105.0};
+    const double highphysbound[nParameters] = {1.0e3, maxScale, 1.0e3};
 
     int ierflg(0);
 
@@ -1511,12 +1511,12 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     //---------------------------------------------------------------------------------
     //Backwards Fit
 
-    const int nParameters2 = 4;
-    const std::string parName2[nParameters2]   = {"ENDENERGY", "SCALE", "MASS", "EXTRA"};
-    const double vstart2[nParameters2] = {10.1, 1.0, 110.0, 1.0};
-    const double step2[nParameters2] = {1.e-1, 1.e-1, 1.e-1, 1.e-1};
-    const double lowphysbound2[nParameters2] = {10.0, 0.01, 105.0, 0.1};
-    const double highphysbound2[nParameters2] = {1.0e3, maxScale, 1.0e3, 1.0e1};
+    const int nParameters2 = 3;
+    const std::string parName2[nParameters2]   = {"ENDENERGY", "SCALE", "MASS"};
+    const double vstart2[nParameters2] = {10.1, 1.0, 110.0};
+    const double step2[nParameters2] = {1.e-1, 1.e-1, 1.e-1};
+    const double lowphysbound2[nParameters2] = {10.0, 0.01, 105.0};
+    const double highphysbound2[nParameters2] = {1.0e3, maxScale, 1.0e3};
 
     int ierflg2(0);
 
@@ -1570,11 +1570,11 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     {
         double f_L_i = f_Ls + (outpar[1] * hitCharge.GetLongitudinalPosition());
         double f_E_i = GetEnergyfromLength(lookupTable, f_L_i);
-        double f_dEdx_2D = outpar[3] * (f_beta/f_alpha) * BetheBloch(f_E_i, outpar[2]);
+        double f_dEdx_2D = (f_beta/f_alpha) * BetheBloch(f_E_i, outpar[2]);
 
         double b_L_i = b_Ls + (outpar2[1] * (globalTrackLength - hitCharge.GetLongitudinalPosition()));
         double b_E_i = GetEnergyfromLength(lookupTable, b_L_i);
-        double b_dEdx_2D = outpar2[3] * (b_beta/b_alpha) * BetheBloch(b_E_i, outpar2[2]);
+        double b_dEdx_2D = (b_beta/b_alpha) * BetheBloch(b_E_i, outpar2[2]);
 
         double Q_fit_f(f_dEdx_2D * hitCharge.GetHitWidth());
         double Q_fit_b(b_dEdx_2D * hitCharge.GetHitWidth());
@@ -1627,14 +1627,14 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
 
     if (forwardsChiSquared <= backwardsChiSquared)
     {
-        float parameterZero(outpar[0]), parameterOne(outpar[1]), parameterTwo(outpar[2]), parameterThree(outpar[3]);
-        FitParameters bestFitParameters(parameterZero, parameterOne, parameterTwo, parameterThree);
+        float parameterZero(outpar[0]), parameterOne(outpar[1]), parameterTwo(outpar[2]);
+        FitParameters bestFitParameters(parameterZero, parameterOne, parameterTwo);
         fitParameters = bestFitParameters;
     }
     else
     {
-        float parameterZero(outpar2[0]), parameterOne(outpar2[1]), parameterTwo(outpar2[2]), parameterThree(outpar2[3]);
-        FitParameters bestFitParameters(parameterZero, parameterOne, parameterTwo, parameterThree);
+        float parameterZero(outpar2[0]), parameterOne(outpar2[1]), parameterTwo(outpar2[2]);
+        FitParameters bestFitParameters(parameterZero, parameterOne, parameterTwo);
         fitParameters = bestFitParameters;
     }
 

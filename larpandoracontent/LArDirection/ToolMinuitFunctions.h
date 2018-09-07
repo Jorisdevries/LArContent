@@ -261,7 +261,7 @@ void GetForwardsChiSquared(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_
         double L_i(Ls + (par[1] * hitCharge.GetLongitudinalPosition()));
         double E_i(GetEnergyfromLength(lookupTable, L_i));
 
-        double dEdx_2D(par[3] * (beta/alpha) * BetheBloch(E_i, M));
+        double dEdx_2D((beta/alpha) * BetheBloch(E_i, M));
         double ChargeOverWidth(hitCharge.GetChargeOverWidth());
 
         chisquared += ( (ChargeOverWidth - dEdx_2D) * (ChargeOverWidth - dEdx_2D) )/(hitCharge.GetUncertainty() * hitCharge.GetUncertainty());
@@ -296,7 +296,7 @@ void GetBackwardsChiSquared(Int_t &, Double_t *, Double_t &f, Double_t *par, Int
         double L_i(Ls + (par[1] * (globalTrackLength - hitCharge.GetLongitudinalPosition())));
         double E_i(GetEnergyfromLength(lookupTable, L_i));
 
-        double dEdx_2D(par[3] * (beta/alpha) * BetheBloch(E_i, M));
+        double dEdx_2D((beta/alpha) * BetheBloch(E_i, M));
         double ChargeOverWidth(hitCharge.GetChargeOverWidth());
 
         chisquared += ( (ChargeOverWidth - dEdx_2D) * (ChargeOverWidth - dEdx_2D) )/(hitCharge.GetUncertainty() * hitCharge.GetUncertainty());
