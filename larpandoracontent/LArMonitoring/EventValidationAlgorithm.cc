@@ -206,7 +206,8 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
     int nNuTrackMatches(0), nRecoNuTrackMatches(0), nMuonTrackMatches(0), nProtonTrackMatches(0);
     int interactionTypeCopy(-1), modifiedInteractionTypeCopy(-1), nuanceCodeCopy(-1);
     int nRecoNuSplits(-1), nRecoNuCosmicRays(0);
-    int nMuons(0), nProtons(0), nNeutrons(0), nPhotons(0), nPiPlus(0), nPiMinus(0), nPiZero(0), nKaons(0), nElectrons(0), nPositrons(0), nMuPlus(0);
+    int nMuons(0), nProtons(0), nNeutrons(0), nPhotons(0), nPiPlus(0), nPiMinus(0), nPiZero(0), nElectrons(0), nOther(0);
+    int nPrimaries(0);
 
     for (const MCParticle *const pMCPrimary : mcPrimaryVector)
     {
@@ -219,21 +220,18 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
         //NEW CODE
         int mcParticlePdg(pMCPrimary->GetParticleId());
 
-        if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary))
+        if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary) && isTargetPrimary)
         {
-            if (mcParticlePdg == 13) ++nMuons;
-            if (mcParticlePdg == 2212) ++nProtons;
-            if (mcParticlePdg == 2112) ++nNeutrons;
-            if (mcParticlePdg == 22) ++nPhotons;
-            if (mcParticlePdg == 211) ++nPiPlus;
-            if (mcParticlePdg == -211) ++nPiMinus;
-            if (mcParticlePdg == 111) ++nPiZero;
-            if (mcParticlePdg == 321) ++nKaons;
-            if (mcParticlePdg == -321) ++nKaons;
-            if (mcParticlePdg == 311) ++nKaons;
-            if (mcParticlePdg == 11) ++nElectrons;
-            if (mcParticlePdg == -11) ++nPositrons;
-            if (mcParticlePdg == -13) ++nMuPlus;
+            ++nPrimaries;
+            if (std::abs(mcParticlePdg) == 13) ++nMuons;
+            else if (std::abs(mcParticlePdg) == 2212) ++nProtons;
+            else if (std::abs(mcParticlePdg) == 11) ++nElectrons;
+            else if (mcParticlePdg == 2112) ++nNeutrons;
+            else if (mcParticlePdg == 22) ++nPhotons;
+            else if (mcParticlePdg == 211) ++nPiPlus;
+            else if (mcParticlePdg == -211) ++nPiMinus;
+            else if (mcParticlePdg == 111) ++nPiZero;
+            else ++nOther;
         }
 
         associatedMCPrimaries.push_back(pMCPrimary);
@@ -372,19 +370,19 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
                      << ", " << LArMonitoringHelper::CountHitsByType(TPC_VIEW_W, pfoHitList) << ")" << std::endl;
         }
 
-        if (std::abs(pMCPrimary->GetParticleId()) == 13 && LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary))
+        if (std::abs(pMCPrimary->GetParticleId()) == 13 && LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary) && isTargetPrimary)
         {
             nMuonParticleMatches = nPrimaryMatches;
             nMuonTrackMatches = nPrimaryTrackMatches;
         }
 
-        if (pMCPrimary->GetParticleId() == 2212 && LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary))
+        if (std::abs(pMCPrimary->GetParticleId()) == 2212 && LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary) && isTargetPrimary)
         {
             nProtonParticleMatches = nPrimaryMatches;
             nProtonTrackMatches = nPrimaryTrackMatches;
         }
 
-        if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary))
+        if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary) && isTargetPrimary)
         {
             nNuParticleMatches += nPrimaryMatches;
             nNuTrackMatches += nPrimaryTrackMatches;
@@ -499,7 +497,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
             for (const auto &mapEntry : nuMCParticlesToGoodHitsMap) mcPrimaryList.push_back(mapEntry.first);
             mcPrimaryList.sort(LArMCParticleHelper::SortByMomentum);
 
-            if (mcPrimaryList.size() == 0 && modifiedInteractionTypeInt != -1)
+            if (mcPrimaryList.size() == 0 && modifiedInteractionTypeInt != 165)
                 modifiedInteractionTypeInt = 166; //often there will be no reconstructable particles left in nu reco due to mistagging, but if a non-CR particle is selected and there are no reconstructable MC particles in the event this constitutes a different class of event: this is a custom interaction type for this case
 
             //NEW CODE
@@ -581,7 +579,6 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
     if (fillTree)
     {
         //NEW CODE
-        //CHECKPOINT
         const MCParticleList *pMCParticleList(nullptr);
         PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
 
@@ -593,6 +590,8 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
 
         this->WriteEventDescription(pMCParticleList, pPfoList, pCaloHitList);
         this->WriteVariables(pPfoList);
+
+        int signal(((nPrimaries == 1 && nMuons == 1 && nRecoNuParticleMatches == 1 && nRecoNuCosmicRays == 0) || (nPrimaries == 2 && nMuons == 1 && nProtons == 1 && nRecoNuParticleMatches == 2 && nRecoNuCosmicRays == 0 && nMuonParticleMatches == 1 && nProtonParticleMatches == 1)) ? 1 : 0);
 
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "fileIdentifier", m_fileIdentifier));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "eventNumber", m_eventNumber - 1));
@@ -610,17 +609,17 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "RecoNeutrinoNumberAssociatedTracks", nRecoNuTrackMatches));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "RecoNeutrinoNumberSplits", nRecoNuSplits));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "RecoNeutrinoNumberCosmicRays", nRecoNuCosmicRays));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberMuons", nMuons));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberProtons", nProtons));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberNeutrons", nNeutrons));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberPhotons", nPhotons));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberPiPlus", nPiPlus));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberPiMinus", nPiMinus));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberPiZero", nPiZero));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberKaons", nKaons));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberElectrons", nElectrons));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberPositrons", nPositrons));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberMuPlus", nMuPlus));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTruePrimaries", nPrimaries));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTrueMuons", nMuons));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTrueProtons", nProtons));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTrueNeutrons", nNeutrons));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTrueElectrons", nElectrons));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTruePhotons", nPhotons));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTruePiPlus", nPiPlus));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTruePiMinus", nPiMinus));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTruePiZero", nPiZero));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberTrueOther", nOther));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "Signal", signal));
         PANDORA_MONITORING_API(FillTree(this->GetPandora(), "EventSelection"));
     }
 
@@ -1310,37 +1309,99 @@ void EventValidationAlgorithm::WriteTopologicalVariables(const ParticleFlowObjec
 {
     float pfoCharge(GetPfoCharge(pPfo));
 
-    float pfoPhi(GetAngleXAxis(pPfo));
+    CartesianVector xAxis(1.f, 0.f, 0.f), yAxis(0.f, 1.f, 0.f);
+    float pfoAzimuthalAngle(GetAngleWithVector(pPfo, xAxis)), pfoPolarAngle(GetAngleWithVector(pPfo, yAxis));
     float pfoTheta(GetThetaBeamPfo(pPfo));
 
     float pfoLength(std::sqrt(LArPfoHelper::GetThreeDLengthSquared(pPfo)));
 
     float pfoTrackProbability(this->CalculateTrackProbability(pPfo));
 
+    float pfoDaughterHitFraction(this->GetDaughterHitFraction(pPfo));
+
     const pandora::Vertex *const pVertex = LArPfoHelper::GetVertex(pPfo);
     const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
     LArTrackStateVector trackStateVector;
     LArPfoHelper::GetSlidingFitTrajectory(pPfo, pVertex, m_slidingFitWindow, slidingFitPitch, trackStateVector);
 
-    TrackState firstTrackState(*(trackStateVector.begin())), lastTrackState(trackStateVector.back());
-    const pandora::CartesianVector initialPosition(firstTrackState.GetPosition());
-    const pandora::CartesianVector endPosition(lastTrackState.GetPosition());
+    pandora::CartesianVector lowZVector(0.f, 0.f, 0.f), highZVector(0.f, 0.f, 0.f);
 
-    const pandora::CartesianVector lowZVector(initialPosition.GetZ() < endPosition.GetZ() ? initialPosition : endPosition);
-    const pandora::CartesianVector highZVector(initialPosition.GetZ() > endPosition.GetZ() ? initialPosition : endPosition);
+    if (trackStateVector.size() > 0)
+    {
+        TrackState firstTrackState(*(trackStateVector.begin())), lastTrackState(trackStateVector.back());
+        pandora::CartesianVector initialPosition(firstTrackState.GetPosition());
+        pandora::CartesianVector endPosition(lastTrackState.GetPosition());
+
+        lowZVector = (initialPosition.GetZ() < endPosition.GetZ() ? initialPosition : endPosition);
+        highZVector = (initialPosition.GetZ() > endPosition.GetZ() ? initialPosition : endPosition);
+    }
+
+    float minX(std::min(lowZVector.GetX(), highZVector.GetX())), maxX(std::max(lowZVector.GetX(), highZVector.GetX()));
+    float minY(std::min(lowZVector.GetY(), highZVector.GetY())), maxY(std::max(lowZVector.GetY(), highZVector.GetY()));
+    float minZ(std::min(lowZVector.GetZ(), highZVector.GetZ())), maxZ(std::max(lowZVector.GetZ(), highZVector.GetZ()));
+    
+    pandora::PfoList downstreamPfos;
+    LArPfoHelper::GetAllDownstreamPfos(pPfo, downstreamPfos);
+    int numberDaughters(downstreamPfos.size());
 
     //Write all information to tree
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "Charge", pfoCharge));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "Length", pfoLength));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "TrackProbability", pfoTrackProbability));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "PolarAngle", pfoPolarAngle));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "AzimuthalAngle", pfoAzimuthalAngle));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "Theta", pfoTheta));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "Phi", pfoPhi));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "DaughterHitFraction", pfoDaughterHitFraction));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "BeginX", lowZVector.GetX()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "BeginY", lowZVector.GetY()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "BeginZ", lowZVector.GetZ()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "EndX", highZVector.GetX()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "EndY", highZVector.GetY()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "EndZ", highZVector.GetZ()));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinX", minX));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MaxX", maxX));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinY", minY));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MaxY", maxY));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinZ", minZ));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MaxZ", maxZ));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "NumberDaughters", numberDaughters));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float EventValidationAlgorithm::GetDaughterHitFraction(const ParticleFlowObject *const pPfo) const
+{
+    pandora::PfoList thisPfoList, downstreamPfos;
+    thisPfoList.insert(thisPfoList.begin(), pPfo);
+    this->GetAllDownstreamPfos(thisPfoList, downstreamPfos);
+
+    pandora::CaloHitList pfoHits, downstreamPfoHits;
+
+    this->GetClusterHits(thisPfoList, pfoHits);
+    this->GetClusterHits(downstreamPfos, downstreamPfoHits);
+
+    float numberDownstreamHits(downstreamPfoHits.size()), numberPrimaryHits(pfoHits.size());
+    float daughterHitFraction(numberDownstreamHits/numberPrimaryHits);
+
+    return daughterHitFraction; 
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventValidationAlgorithm::GetAllDownstreamPfos(const PfoList &inputPfoList, PfoList &outputPfoList) const
+{
+    for (const ParticleFlowObject *const pPfo : inputPfoList)
+        this->GetAllDownstreamPfos(pPfo, outputPfoList);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventValidationAlgorithm::GetAllDownstreamPfos(const ParticleFlowObject *const pPfo, PfoList &outputPfoList) const
+{
+    if (outputPfoList.end() != std::find(outputPfoList.begin(), outputPfoList.end(), pPfo))
+        return;
+
+    LArPfoHelper::GetAllDownstreamPfos(pPfo->GetDaughterPfoList(), outputPfoList);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -1354,6 +1415,13 @@ void EventValidationAlgorithm::WriteDirectionFitVariables(const ParticleFlowObje
         TrackDirectionTool::HitChargeVector bestFitCharges(fitResult.GetDeltaChiSquaredPerHit() < 0 ? fitResult.GetForwardsFitCharges() : fitResult.GetBackwardsFitCharges());
 
         //Primitive particle ID variables
+        float meanQW(0.f);
+
+        for (const auto &fitCharge : bestFitCharges)
+            meanQW += fitCharge.GetChargeOverWidth();
+
+        meanQW /= bestFitCharges.size();
+
         float fitChargeRange(std::abs(bestFitCharges.front().GetChargeOverWidth() - bestFitCharges.back().GetChargeOverWidth()));
         float trackLength(std::abs(bestFitCharges.front().GetLongitudinalPosition() - bestFitCharges.back().GetLongitudinalPosition()));
 
@@ -1375,6 +1443,8 @@ void EventValidationAlgorithm::WriteDirectionFitVariables(const ParticleFlowObje
         float cosmicProbability(this->CalculateCosmicProbability(fitResult));
         //std::cout << "cosmicProbability: " << cosmicProbability << std::endl; 
 
+        int intersectsYFace(this->IntersectsYFace(fitResult) ? 1 : 0); 
+
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "DirectionFitSuccesful", 1));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitParameterZero", fitParameters.GetParameterZero()));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitParameterOne", fitParameters.GetParameterOne()));
@@ -1389,25 +1459,28 @@ void EventValidationAlgorithm::WriteDirectionFitVariables(const ParticleFlowObje
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinSumQW", minSumQW));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MaxSumQW", maxSumQW));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "SumQWRatio", sumQWRatio));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MeanQW", meanQW));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "StraightnessRatio", straightnessRatio));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "IntersectsYFace", intersectsYFace));
     }
     catch (...)
     {
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "DirectionFitSuccesful", 0));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitParameterZero", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitParameterOne", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitParameterTwo", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "UpDownDeltaChiSquaredPerHit", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "DeltaChiSquaredPerHit", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinChiSquaredPerHit", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "SplitApplied", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitChargeRangeOverLength", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "AngleCorrectedFitChargeRangeOverLength", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "CosmicProbability", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinSumQW", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MaxSumQW", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "SumQWRatio", -1000));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "StraightnessRatio", -1000));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitParameterZero", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitParameterOne", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitParameterTwo", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "UpDownDeltaChiSquaredPerHit", -100.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "DeltaChiSquaredPerHit", -100.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinChiSquaredPerHit", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "SplitApplied", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitChargeRangeOverLength", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "AngleCorrectedFitChargeRangeOverLength", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "CosmicProbability", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinSumQW", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MaxSumQW", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "SumQWRatio", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "StraightnessRatio", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "IntersectsYFace", -1));
     }
 }
 
@@ -1422,12 +1495,45 @@ float EventValidationAlgorithm::CalculateCosmicProbability(TrackDirectionTool::D
     float alpha_par1(4.89049e-01), alpha_par2(4.91588e-03), alpha_par3(-3.68713e-01);
     float beta_par1(1.62781e-02), beta_par2(-5.80356e-05), beta_par3(1.82657e-03);
 
-    float p_max(std::max(p_max_par1 + p_max_par3 * minChiSquaredPerHit + p_max_par2 * numberHits, 0.5f)), alpha(std::max(alpha_par1 + alpha_par3 * minChiSquaredPerHit + alpha_par2 * numberHits, 0.1f)), beta(std::max(beta_par1 + beta_par3 * minChiSquaredPerHit + beta_par2 * numberHits, 0.01f));
+    float p_max(std::max(p_max_par1 + p_max_par3 * minChiSquaredPerHit + p_max_par2 * numberHits, 0.5f)), alpha(std::max(alpha_par1 + alpha_par3 * minChiSquaredPerHit + alpha_par2 * numberHits, 0.1f)), beta(std::max(beta_par1 + beta_par3 * minChiSquaredPerHit + beta_par2 * numberHits, 0.001f));
 
     float p0(0.5 + ((1/(2*alpha)) * ( (2*alpha*p_max + 2*beta*p_max - alpha - beta) * std::pow(((alpha + beta)/beta), (beta/alpha)))));
+
+    if (p0 > 0.98)
+        p0 = 0.98;
+
+    if (alpha > 1.6)
+        alpha = 1.6;
+
     float probability(0.5 + (p0 - 0.5) * (1 - exp(-alpha*upDownDeltaChiSquaredPerHit)) * exp(-beta*upDownDeltaChiSquaredPerHit));
 
+    if (!this->IntersectsYFace(directionFit))
+        probability = 0.f;
+
     return probability;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+bool EventValidationAlgorithm::IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult) const
+{
+    const pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());
+    const pandora::CartesianVector endPosition(fitResult.GetEndpoint());
+
+    const pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
+    const pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
+
+    float xExtent(highYVector.GetX() - lowYVector.GetX()), yExtent(highYVector.GetY() - lowYVector.GetY()), zExtent(highYVector.GetZ() - lowYVector.GetZ());
+    float xSlope(xExtent/yExtent), zSlope(zExtent/yExtent);
+    float yDistanceToTravel(116.5 - lowYVector.GetY());
+    CartesianVector yFaceIntersection(lowYVector.GetX() + xSlope*yDistanceToTravel, 116.5, lowYVector.GetZ() + zSlope*yDistanceToTravel);
+
+    float errorMargin(5.f);
+
+    if (highYVector.GetY() >= (116.5 - 20.0) && yFaceIntersection.GetX() > 0.0 - errorMargin && yFaceIntersection.GetX() < 128.0 + errorMargin && yFaceIntersection.GetZ() > 0.0 - errorMargin && yFaceIntersection.GetZ() < 1037.0 + errorMargin)
+        return true;
+    else
+        return false;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -1557,9 +1663,11 @@ float EventValidationAlgorithm::GetPfoCharge(const pandora::ParticleFlowObject* 
 {
     float pfoTotalCharge(0.f);
 
+    pandora::PfoList pfoList;
+    pfoList.insert(pfoList.begin(), pPfo);
+
     pandora::CaloHitList pfoHitList;
-    pandora::HitType hitType(TPC_VIEW_W);
-    LArPfoHelper::GetCaloHits(pPfo, hitType, pfoHitList);
+    this->GetClusterHits(pfoList, pfoHitList);
 
     for (const auto pCaloHit : pfoHitList)
         pfoTotalCharge += pCaloHit->GetInputEnergy();
@@ -1571,9 +1679,12 @@ float EventValidationAlgorithm::GetPfoCharge(const pandora::ParticleFlowObject* 
 
 int EventValidationAlgorithm::CountPfoHits(const pandora::ParticleFlowObject* pPfo) const
 {
+    pandora::PfoList pfoList;
+    pfoList.insert(pfoList.begin(), pPfo);
+
     pandora::CaloHitList pfoHitList;
-    pandora::HitType hitType(TPC_VIEW_W);
-    LArPfoHelper::GetCaloHits(pPfo, hitType, pfoHitList);
+    this->GetClusterHits(pfoList, pfoHitList);
+
     return pfoHitList.size();
 }
 
@@ -1583,6 +1694,9 @@ float EventValidationAlgorithm::GetThetaBeamPfo(const pandora::ParticleFlowObjec
 {
     LArTrackStateVector trackStateVector; 
     LArPfoHelper::GetSlidingFitTrajectory(pPfo, LArPfoHelper::GetVertex(pPfo), m_slidingFitWindow, LArGeometryHelper::GetWireZPitch(this->GetPandora()), trackStateVector);
+
+    if (trackStateVector.size() == 0)
+        return -1.f;
 
     const pandora::CartesianVector zAxis(0.f, 0.f, 1.f);
     const pandora::CartesianVector vertexDirection(trackStateVector.front().GetDirection());
@@ -1596,9 +1710,26 @@ float EventValidationAlgorithm::GetAngleXAxis(const pandora::ParticleFlowObject*
     LArTrackStateVector trackStateVector; 
     LArPfoHelper::GetSlidingFitTrajectory(pPfo, LArPfoHelper::GetVertex(pPfo), m_slidingFitWindow, LArGeometryHelper::GetWireZPitch(this->GetPandora()), trackStateVector);
 
+    if (trackStateVector.size() == 0)
+        return -1.f;
+
     const pandora::CartesianVector xAxis(1.f, 0.f, 0.f);
     const pandora::CartesianVector vertexDirection(trackStateVector.front().GetDirection());
     return vertexDirection.GetOpeningAngle(xAxis); 
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float EventValidationAlgorithm::GetAngleWithVector(const pandora::ParticleFlowObject* pPfo, CartesianVector &axisVector) const
+{
+    LArTrackStateVector trackStateVector; 
+    LArPfoHelper::GetSlidingFitTrajectory(pPfo, LArPfoHelper::GetVertex(pPfo), m_slidingFitWindow, LArGeometryHelper::GetWireZPitch(this->GetPandora()), trackStateVector);
+
+    if (trackStateVector.size() == 0)
+        return -1.f;
+
+    const pandora::CartesianVector vertexDirection(trackStateVector.front().GetDirection());
+    return vertexDirection.GetOpeningAngle(axisVector); 
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

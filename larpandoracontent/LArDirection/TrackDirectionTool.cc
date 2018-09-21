@@ -38,13 +38,13 @@ namespace lar_content
 
 TrackDirectionTool::TrackDirectionTool() :
     m_slidingFitWindow(20),
-    m_minClusterCaloHits(20),
-    m_minClusterLength(5.f),
+    m_minClusterCaloHits(10),
+    m_minClusterLength(2.f),
     m_numberTrackEndHits(100000),
     m_enableFragmentRemoval(true),
     m_enableSplitting(true),
     m_tableInitialEnergy(2000.f),
-    m_tableStepSize(0.1f),
+    m_tableStepSize(0.5f),
     m_writeTable(false),
     m_lookupTableFileName("lookuptable.root"),
     m_probabilityFileName("probability.root"),
@@ -105,6 +105,9 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetPfoDirection(const
         const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
         LArTrackStateVector trackStateVector;
         LArPfoHelper::GetSlidingFitTrajectory(pPfo, pVertex, m_slidingFitWindow, slidingFitPitch, trackStateVector);
+
+        if (trackStateVector.size() == 0)
+            throw StatusCodeException(STATUS_CODE_NOT_FOUND);
 
         const Cluster *const pClusterW = GetTargetClusterFromPFO(pPfo, trackStateVector);
 
@@ -1497,8 +1500,8 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
         pMinuit->mnparm(j, parName[j].c_str(), vstart[j], step[j], lowphysbound[j], highphysbound[j], ierflg);
 
     double arglist[2];
-    arglist[0] = 50000;
-    arglist[1] = 2;
+    arglist[0] = 1000;
+    arglist[1] = 1;
     pMinuit->mnexcm("MIGRAD", arglist, 1, fitStatus1);
 
     double outpar[nParameters], err[nParameters];
@@ -1528,8 +1531,8 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
         pMinuit2->mnparm(j, parName2[j].c_str(), vstart2[j], step2[j], lowphysbound2[j], highphysbound2[j], ierflg2);
 
     double arglist2[2];
-    arglist2[0] = 50000;
-    arglist2[1] = 2;
+    arglist2[0] = 1000;
+    arglist2[1] = 1;
     pMinuit2->mnexcm("MIGRAD", arglist2, 1, fitStatus2);
 
     double outpar2[nParameters2], err2[nParameters2];

@@ -222,6 +222,8 @@ private:
 
     float CalculateCosmicProbability(TrackDirectionTool::DirectionFitObject &directionFit) const;
 
+    bool IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult) const;
+
     float CalculateTrackProbability(const pandora::ParticleFlowObject *const pPfo) const;
 
     std::vector<int> GetNeutrinoInducedHits(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, pandora::PfoList &recoNeutrinoPrimaryDaughters, const pandora::CaloHitList* pCaloHitList) const;
@@ -254,6 +256,12 @@ private:
 
     void WriteTopologicalVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
 
+    float GetDaughterHitFraction(const pandora::ParticleFlowObject *const pPfo) const;
+
+    void GetAllDownstreamPfos(const pandora::PfoList &inputPfoList, pandora::PfoList &outputPfoList) const;
+
+    void GetAllDownstreamPfos(const pandora::ParticleFlowObject *const pPfo, pandora::PfoList &outputPfoList) const;
+
     void WriteDirectionFitVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
 
     int GetInteractionType() const;
@@ -273,6 +281,8 @@ private:
     float GetThetaBeamPfo(const pandora::ParticleFlowObject* pPfo) const;
 
     float GetAngleXAxis(const pandora::ParticleFlowObject* pPfo) const;
+
+    float GetAngleWithVector(const pandora::ParticleFlowObject* pPfo, pandora::CartesianVector &axisVector) const;
 
     float GetPfoOpeningAngle(const pandora::ParticleFlowObject* pPfo1, const pandora::ParticleFlowObject* pPfo2) const;
 
