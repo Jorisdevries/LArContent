@@ -969,7 +969,7 @@ void SvmVertexSelectionAlgorithm::GetBestVertex(const VertexVector &vertexVector
     for (const Vertex *const pVertex : vertexVector)
     {
         CartesianVector vertexPosition(pVertex->GetPosition());
-        const CartesianVector correctedVertexPosition(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexPosition));
+        //const CartesianVector correctedVertexPosition(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexPosition));
  
         float mcVertexDr(std::numeric_limits<float>::max());
         for (const MCParticle *const pMCNeutrino : mcNeutrinoVector)
@@ -977,7 +977,7 @@ void SvmVertexSelectionAlgorithm::GetBestVertex(const VertexVector &vertexVector
             const CartesianVector mcNeutrinoPosition(pMCNeutrino->GetEndpoint().GetX() + m_mcVertexXCorrection, pMCNeutrino->GetEndpoint().GetY(),
                 pMCNeutrino->GetEndpoint().GetZ());
 
-            const float dr = (mcNeutrinoPosition - correctedVertexPosition).GetMagnitude();
+            const float dr = (mcNeutrinoPosition - vertexPosition).GetMagnitude();
 
             if (dr < mcVertexDr)
                 mcVertexDr = dr;
@@ -1144,7 +1144,8 @@ float SvmVertexSelectionAlgorithm::GetVertexDR(const pandora::Vertex* const pVer
     CartesianVector vertexCandidatePosition(pVertex->GetPosition());
         
     if (enableSpaceChargeCorrection)
-        vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
+        std::cout << "Currently does nothing." << std::endl;
+        //vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
 
     return (vertexCandidatePosition - trueVertexPosition).GetMagnitude();
 }
@@ -1174,7 +1175,7 @@ void SvmVertexSelectionAlgorithm::PopulateFinalVertexScoreList(const VertexFeatu
 
 StatusCode SvmVertexSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 {
-    LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
+    //LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
 
     AlgorithmToolVector algorithmToolVector;
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ProcessAlgorithmToolList(*this, xmlHandle, "FeatureTools", algorithmToolVector));

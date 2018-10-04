@@ -27,7 +27,7 @@ lar_content::TrackDirectionTool::HitChargeVector* pMinuitVector = new lar_conten
 
 float globalTotalCharge(0.f), globalTrackLength(0.f), globalTotalHitWidth(0.f);
 
-static lar_content::TrackDirectionTool::LookupTable globalMuonLookupTable;
+static lar_content::TrackDirectionTool::LookupTable globalLookupTable;
 
 //----------------------------------------------------------------------------------------------------------------------------------
 
@@ -37,14 +37,14 @@ namespace lar_content
 {
 
 TrackDirectionTool::TrackDirectionTool() :
-    m_slidingFitWindow(20),
-    m_minClusterCaloHits(10),
-    m_minClusterLength(2.f),
+    m_slidingFitWindow(5),
+    m_minClusterCaloHits(5),
+    m_minClusterLength(0.f),
     m_numberTrackEndHits(100000),
     m_enableFragmentRemoval(true),
     m_enableSplitting(true),
     m_tableInitialEnergy(2000.f),
-    m_tableStepSize(0.5f),
+    m_tableStepSize(1.0f),
     m_writeTable(false),
     m_lookupTableFileName("lookuptable.root"),
     m_probabilityFileName("probability.root"),
@@ -68,14 +68,14 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
 {
     try
     {
-        if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits)
+        if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || LArClusterHelper::GetLength(pTargetClusterW) < m_minClusterLength)
         {
-            std::cout << "Direction fit error: not enough hits" << std::endl;
+            std::cout << "Direction fit error: invalid cluster" << std::endl;
             throw STATUS_CODE_FAILURE;
         }
 
-        if (globalMuonLookupTable.GetMap().empty())
-            this->SetLookupTable();
+        //if (globalLookupTable.GetMap().empty())
+            this->SetLookupTable(105.7);
 
         DirectionFitObject finalDirectionFitObject;
 
@@ -131,6 +131,73 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetPfoDirection(const
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(const Cluster *const pTargetClusterW, float massHypothesis)
+{
+    try
+    {
+        if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || LArClusterHelper::GetLength(pTargetClusterW) < m_minClusterLength)
+        {
+            std::cout << "Direction fit error: invalid cluster" << std::endl;
+            throw STATUS_CODE_FAILURE;
+        }
+
+        //if (globalLookupTable.GetMap().empty())
+            this->SetLookupTable(massHypothesis);
+
+        DirectionFitObject finalDirectionFitObject;
+
+        this->AddToSlidingFitCache(pTargetClusterW);
+        this->GetCalorimetricDirection(pTargetClusterW, finalDirectionFitObject);
+        this->ComputeProbability(finalDirectionFitObject);
+        this->SetEndpoints(finalDirectionFitObject, pTargetClusterW);
+        //this->SetMCTruth(finalDirectionFitObject, pTargetClusterW);
+
+        this->TidyUp();
+        return finalDirectionFitObject;
+    }
+    catch (StatusCodeException &statusCodeException)
+    {
+        this->TidyUp();
+        throw statusCodeException;
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetPfoDirection(const pandora::ParticleFlowObject *const pPfo, float massHypothesis)
+{
+    try 
+    {
+        const pandora::Vertex *const pVertex = LArPfoHelper::GetVertex(pPfo);
+        const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
+        LArTrackStateVector trackStateVector;
+        LArPfoHelper::GetSlidingFitTrajectory(pPfo, pVertex, m_slidingFitWindow, slidingFitPitch, trackStateVector);
+
+        if (trackStateVector.size() == 0)
+            throw StatusCodeException(STATUS_CODE_NOT_FOUND);
+
+        const Cluster *const pClusterW = GetTargetClusterFromPFO(pPfo, trackStateVector);
+
+        DirectionFitObject finalDirectionFitObject = GetClusterDirection(pClusterW, massHypothesis);
+        //this->ComputeProbability(finalDirectionFitObject);
+
+        //If the PFO is 3D, then 3D endpoints should be set 
+        if (LArPfoHelper::IsThreeD(pPfo))
+            SetEndpoints(finalDirectionFitObject, trackStateVector);
+
+        this->TidyUp();
+        return finalDirectionFitObject;
+    }
+
+    catch (StatusCodeException &statusCodeException)
+    {
+        this->TidyUp();
+        throw statusCodeException;
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 void TrackDirectionTool::WriteLookupTableToTree(LookupTable &lookupTable)
 {
     std::vector<int> mapVector1, reverseMapVector2;
@@ -160,31 +227,31 @@ void TrackDirectionTool::WriteLookupTableToTree(LookupTable &lookupTable)
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void TrackDirectionTool::SetLookupTable()
+void TrackDirectionTool::SetLookupTable(float particleMass)
 {
-    globalMuonLookupTable.SetInitialEnergy(m_tableInitialEnergy);
-    globalMuonLookupTable.SetBinWidth(m_tableStepSize);
+    globalLookupTable.SetInitialEnergy(m_tableInitialEnergy);
+    globalLookupTable.SetBinWidth(m_tableStepSize);
 
     ifstream inputFile(m_lookupTableFileName);
 
     if (inputFile) 
     {
-        this->ReadLookupTableFromTree(globalMuonLookupTable);
+        this->ReadLookupTableFromTree(globalLookupTable);
     
         if (m_writeTable)
         {
-            FillLookupTable(globalMuonLookupTable, 105.7);
-            this->WriteLookupTableToTree(globalMuonLookupTable);
+            FillLookupTable(globalLookupTable, particleMass);
+            this->WriteLookupTableToTree(globalLookupTable);
         }
     }
     else
     {
         //std::cout << "WARNING: filling lookup table because lookuptable.root was not found. To create it, include <WriteTable>true</WriteTable> to the Pandora settings XML file." << std::endl;
         //
-        FillLookupTable(globalMuonLookupTable, 105.7);
+        FillLookupTable(globalLookupTable, particleMass);
 
         if (m_writeTable)
-            this->WriteLookupTableToTree(globalMuonLookupTable);
+            this->WriteLookupTableToTree(globalLookupTable);
     }
 }
 
@@ -392,6 +459,12 @@ void TrackDirectionTool::FillHitChargeVector(const Cluster *const pCluster, HitC
 
 void TrackDirectionTool::TrackInnerFilter(HitChargeVector &hitChargeVector, HitChargeVector &filteredHitChargeVector)
 {
+    if (hitChargeVector.size() <= 5)
+    {
+        filteredHitChargeVector = hitChargeVector;
+        return;
+    }
+
     //Fill endpoint protected area into filtered vector and put all other hits in a separate vector
     float endpointProtectionRange(0.05);
     filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(),  hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size());
@@ -729,8 +802,12 @@ void TrackDirectionTool::ParticleSplitting(HitChargeVector &hitChargeVector, Dir
         HitChargeVector backwardsTestHitCollection, forwardsTestHitCollection;
         this->SplitHitCollectionByLeftRight(hitChargeVector, splitPosition, backwardsTestHitCollection, forwardsTestHitCollection);
 
+        HitChargeVector backwardsTestFilteredHitCollection, forwardsFilteredTestHitCollection;
+        this->TrackInnerFilter(backwardsTestHitCollection, backwardsTestFilteredHitCollection);
+        this->TrackInnerFilter(forwardsTestHitCollection, forwardsFilteredTestHitCollection);
+
         DirectionFitObject backwardsTestDirectionFitObject, forwardsTestDirectionFitObject;
-        this->FitHitChargeVector(backwardsTestHitCollection, forwardsTestHitCollection, backwardsTestDirectionFitObject, forwardsTestDirectionFitObject);
+        this->FitHitChargeVector(backwardsTestFilteredHitCollection, forwardsFilteredTestHitCollection, backwardsTestDirectionFitObject, forwardsTestDirectionFitObject);
 
         float splitMinChiSquared((backwardsTestDirectionFitObject.GetNHits() > 0 ? backwardsTestDirectionFitObject.GetBackwardsChiSquared()/backwardsTestDirectionFitObject.GetNHits() : 0.f) + (forwardsTestDirectionFitObject.GetNHits() > 0 ? forwardsTestDirectionFitObject.GetForwardsChiSquared()/forwardsTestDirectionFitObject.GetNHits() : 0.f));
 
@@ -838,7 +915,7 @@ void TrackDirectionTool::CreateCalorimetricSplitHitVector(HitChargeVector &hitCh
     if (it == jumpObjects.end())
         this->FindKinkSplit(hitChargeVector, splitPositions);
 
-    //this->FindBowlSplit(hitChargeVector, splitPositions);
+    //this->FindSamplingSplit(hitChargeVector, splitPositions);
 
     std::sort(splitPositions.begin(), splitPositions.end());
     splitPositions.erase(std::unique(splitPositions.begin(), splitPositions.end()), splitPositions.end());
@@ -1338,11 +1415,13 @@ void TrackDirectionTool::FindJumpSplit(HitChargeVector &hitChargeVector, std::ve
 
 //--------------------------------------------------------------------------------------------------------------------------------
 
-void TrackDirectionTool::FindBowlSplit(HitChargeVector &hitChargeVector, std::vector<float> &splitPositions)
+void TrackDirectionTool::FindSamplingSplit(HitChargeVector &hitChargeVector, std::vector<float> &splitPositions)
 {
-    //HitChargeVector binnedHitChargeVector;
-    //BinHitChargeVector(hitChargeVector, binnedHitChargeVector, 1.0);
-    splitPositions.push_back(hitChargeVector.at(hitChargeVector.size()/2).GetLongitudinalPosition());
+    float trackLength(0.f);
+    this->GetTrackLength(hitChargeVector, trackLength);
+
+    for (float i = 0.05; i <= 0.95; i += 0.05)
+        splitPositions.push_back(i * trackLength);
 }
 
 //--------------------------------------------------------------------------------------------------------------------------------
@@ -1479,16 +1558,17 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     //---------------------------------------------------------------------------------------------------
     //Forwards Fit
 
-    //double particleMass(105.7);
-    double maxScale(globalMuonLookupTable.GetMaxRange()/globalTrackLength);
-    LookupTable lookupTable = globalMuonLookupTable;
+    double maxScale(globalLookupTable.GetMaxRange()/globalTrackLength);
+    double particleMass(globalLookupTable.GetMass());
+
+    LookupTable lookupTable = globalLookupTable;
 
     const int nParameters = 3;
-    const std::string parName[nParameters]   = {"ENDENERGY", "SCALE", "MASS"};
-    const double vstart[nParameters] = {10.1, 1.0, 110.0};
-    const double step[nParameters] = {1.e-1, 1.e-1, 1.e-1};
-    const double lowphysbound[nParameters] = {10.0, 0.01, 105.0};
-    const double highphysbound[nParameters] = {1.0e3, maxScale, 1.0e3};
+    const std::string parName[nParameters]   = {"ENDENERGY", "SCALE", "FUDGE"};
+    const double vstart[nParameters] = {11.0, 1.01, 1.0};
+    const double step[nParameters] = {0.0001, 0.0001, 0.0001};
+    const double lowphysbound[nParameters] = {10.0, 1.0, 0.95};
+    const double highphysbound[nParameters] = {266.0, maxScale, 1.05};
 
     int ierflg(0);
 
@@ -1514,12 +1594,12 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     //---------------------------------------------------------------------------------
     //Backwards Fit
 
-    const int nParameters2 = 3;
-    const std::string parName2[nParameters2]   = {"ENDENERGY", "SCALE", "MASS"};
-    const double vstart2[nParameters2] = {10.1, 1.0, 110.0};
-    const double step2[nParameters2] = {1.e-1, 1.e-1, 1.e-1};
-    const double lowphysbound2[nParameters2] = {10.0, 0.01, 105.0};
-    const double highphysbound2[nParameters2] = {1.0e3, maxScale, 1.0e3};
+    const int nParameters2 = 4;
+    const std::string parName2[nParameters2]   = {"ENDENERGY", "SCALE", "FUDGE"};
+    const double vstart2[nParameters2] = {11.0, 1.01, 1.0};
+    const double step2[nParameters2] = {0.0001, 0.0001, 0.0001};
+    const double lowphysbound2[nParameters2] = {10.0, 1.0, 0.95};
+    const double highphysbound2[nParameters2] = {266.0, maxScale, 1.05};
 
     int ierflg2(0);
 
@@ -1573,11 +1653,11 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     {
         double f_L_i = f_Ls + (outpar[1] * hitCharge.GetLongitudinalPosition());
         double f_E_i = GetEnergyfromLength(lookupTable, f_L_i);
-        double f_dEdx_2D = (f_beta/f_alpha) * BetheBloch(f_E_i, outpar[2]);
+        double f_dEdx_2D = outpar[2] * (f_beta/f_alpha) * BetheBloch(f_E_i, particleMass);
 
         double b_L_i = b_Ls + (outpar2[1] * (globalTrackLength - hitCharge.GetLongitudinalPosition()));
         double b_E_i = GetEnergyfromLength(lookupTable, b_L_i);
-        double b_dEdx_2D = (b_beta/b_alpha) * BetheBloch(b_E_i, outpar2[2]);
+        double b_dEdx_2D = outpar2[2] * (b_beta/b_alpha) * BetheBloch(b_E_i, particleMass);
 
         double Q_fit_f(f_dEdx_2D * hitCharge.GetHitWidth());
         double Q_fit_b(b_dEdx_2D * hitCharge.GetHitWidth());

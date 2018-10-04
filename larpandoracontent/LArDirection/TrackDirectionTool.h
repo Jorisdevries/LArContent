@@ -200,12 +200,17 @@ public:
 
         double GetMaxRange();
 
+        void SetMass(double &maxRange);
+
+        double GetMass();
+
     private:
         std::map<int, double>                       m_map;
         std::map<double, int>                       m_reversemap;
-        double                                      m_binwidth;               ///<
+        double                                      m_binwidth;
         double                                      m_initialenergy;
         double                                      m_maxrange;
+        double                                      m_mass;
     };
 
     class DirectionFitObject
@@ -325,6 +330,10 @@ public:
 
     TrackDirectionTool::DirectionFitObject GetPfoDirection(const pandora::ParticleFlowObject *const pPfo);
 
+    TrackDirectionTool::DirectionFitObject GetClusterDirection(const pandora::Cluster *const pTargetClusterW, float massHypothesis);
+
+    TrackDirectionTool::DirectionFitObject GetPfoDirection(const pandora::ParticleFlowObject *const pPfo, float massHypothesis);
+
     void WriteLookupTableToTree(LookupTable &lookupTable);
 
     private:
@@ -355,7 +364,7 @@ public:
 
     //-----------------------------------------------------------------------------------------------
 
-    void SetLookupTable();
+    void SetLookupTable(float particleMass);
 
     const pandora::Cluster* GetTargetClusterFromPFO(const pandora::ParticleFlowObject* PFO, const LArTrackStateVector &trackStateVector);
 
@@ -409,7 +418,7 @@ public:
 
     void FindJumpSplit(HitChargeVector &hitChargeVector, std::vector<JumpObject> &jumpObjects);
 
-    void FindBowlSplit(HitChargeVector &hitChargeVector, std::vector<float> &splitPositions);
+    void FindSamplingSplit(HitChargeVector &hitChargeVector, std::vector<float> &splitPositions);
 
     void FitHitChargeVector(HitChargeVector &hitChargeVector, TrackDirectionTool::DirectionFitObject &fitResult, int numberHitsToConsider=1000000);
 
@@ -892,6 +901,20 @@ inline double TrackDirectionTool::LookupTable::GetMaxRange()
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
+
+inline void TrackDirectionTool::LookupTable::SetMass(double &mass)
+{
+    m_mass = mass;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline double TrackDirectionTool::LookupTable::GetMass()
+{
+    return m_mass;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 inline TrackDirectionTool::DirectionFitObject::DirectionFitObject()
@@ -1260,8 +1283,11 @@ inline void TrackDirectionTool::DirectionFitObject::DrawFit()
 
         //PANDORA_MONITORING_API(Pause(this->GetPandora()));
         canvas->SaveAs("fit.png");
-        //delete canvas;
+        delete canvas;
     } 
+
+    delete Hits;
+    delete fitHits;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

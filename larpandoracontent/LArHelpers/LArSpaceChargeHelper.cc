@@ -12,44 +12,44 @@ using namespace pandora;
 
 namespace lar_content
 {
-    TGraph **g1_x = new TGraph*[7];
-    TGraph **g2_x = new TGraph*[7];
-    TGraph **g3_x = new TGraph*[7];
-    TGraph **g4_x = new TGraph*[7];
-    TGraph **g5_x = new TGraph*[7];
+    static TGraph **g1_x = new TGraph*[7];
+    static TGraph **g2_x = new TGraph*[7];
+    static TGraph **g3_x = new TGraph*[7];
+    static TGraph **g4_x = new TGraph*[7];
+    static TGraph **g5_x = new TGraph*[7];
 
-    TGraph **g1_y = new TGraph*[7];
-    TGraph **g2_y = new TGraph*[7];
-    TGraph **g3_y = new TGraph*[7];
-    TGraph **g4_y = new TGraph*[7];
-    TGraph **g5_y = new TGraph*[7];
-    TGraph **g6_y = new TGraph*[7];
+    static TGraph **g1_y = new TGraph*[7];
+    static TGraph **g2_y = new TGraph*[7];
+    static TGraph **g3_y = new TGraph*[7];
+    static TGraph **g4_y = new TGraph*[7];
+    static TGraph **g5_y = new TGraph*[7];
+    static TGraph **g6_y = new TGraph*[7];
 
-    TGraph **g1_z = new TGraph*[7];
-    TGraph **g2_z = new TGraph*[7];
-    TGraph **g3_z = new TGraph*[7];
-    TGraph **g4_z = new TGraph*[7];
+    static TGraph **g1_z = new TGraph*[7];
+    static TGraph **g2_z = new TGraph*[7];
+    static TGraph **g3_z = new TGraph*[7];
+    static TGraph **g4_z = new TGraph*[7];
 
-    TF1 *f1_x = new TF1("f1_x","pol6");
-    TF1 *f2_x = new TF1("f2_x","pol6");
-    TF1 *f3_x = new TF1("f3_x","pol6");
-    TF1 *f4_x = new TF1("f4_x","pol6");
-    TF1 *f5_x = new TF1("f5_x","pol6");
-    TF1 *fFinal_x = new TF1("fFinal_x","pol4");
+    static TF1 *f1_x = new TF1("f1_x","pol6");
+    static TF1 *f2_x = new TF1("f2_x","pol6");
+    static TF1 *f3_x = new TF1("f3_x","pol6");
+    static TF1 *f4_x = new TF1("f4_x","pol6");
+    static TF1 *f5_x = new TF1("f5_x","pol6");
+    static TF1 *fFinal_x = new TF1("fFinal_x","pol4");
 
-    TF1 *f1_y = new TF1("f1_y","pol5");
-    TF1 *f2_y = new TF1("f2_y","pol5");
-    TF1 *f3_y = new TF1("f3_y","pol5");
-    TF1 *f4_y = new TF1("f4_y","pol5");
-    TF1 *f5_y = new TF1("f5_y","pol5");
-    TF1 *f6_y = new TF1("f6_y","pol5");
-    TF1 *fFinal_y = new TF1("fFinal_y","pol5");
+    static TF1 *f1_y = new TF1("f1_y","pol5");
+    static TF1 *f2_y = new TF1("f2_y","pol5");
+    static TF1 *f3_y = new TF1("f3_y","pol5");
+    static TF1 *f4_y = new TF1("f4_y","pol5");
+    static TF1 *f5_y = new TF1("f5_y","pol5");
+    static TF1 *f6_y = new TF1("f6_y","pol5");
+    static TF1 *fFinal_y = new TF1("fFinal_y","pol5");
 
-    TF1 *f1_z = new TF1("f1_z","pol4");
-    TF1 *f2_z = new TF1("f2_z","pol4");
-    TF1 *f3_z = new TF1("f3_z","pol4");
-    TF1 *f4_z = new TF1("f4_z","pol4");
-    TF1 *fFinal_z = new TF1("fFinal_z","pol3");
+    static TF1 *f1_z = new TF1("f1_z","pol4");
+    static TF1 *f2_z = new TF1("f2_z","pol4");
+    static TF1 *f3_z = new TF1("f3_z","pol4");
+    static TF1 *f4_z = new TF1("f4_z","pol4");
+    static TF1 *fFinal_z = new TF1("fFinal_z","pol3");
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -119,8 +119,6 @@ CartesianVector LArSpaceChargeHelper::GetPositionOffset(CartesianVector &positio
 {
     CartesianVector transformedPosition(TransformPosition(positionVector));
     CartesianVector positionOffsets(-GetParametricPositionOffset(transformedPosition, "X"), GetParametricPositionOffset(transformedPosition, "Y"), GetParametricPositionOffset(transformedPosition, "Z")); 
-
-    
 
     return positionOffsets;
 }

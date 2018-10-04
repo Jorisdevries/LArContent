@@ -13,6 +13,7 @@
 #include "larpandoracontent/LArHelpers/LArMCParticleHelper.h"
 
 #include "larpandoracontent/LArDirection/TrackDirectionTool.h"
+#include "larpandoracontent/LArDirection/DirectionFittingThreeDTool.h"
 #include "larpandoracontent/LArTrackShowerId/TrackShowerIdFeatureTool.h"
 
 #ifdef MONITORING
@@ -222,6 +223,8 @@ private:
 
     float CalculateCosmicProbability(TrackDirectionTool::DirectionFitObject &directionFit) const;
 
+    void WritePIDVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
+
     bool IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult) const;
 
     float CalculateTrackProbability(const pandora::ParticleFlowObject *const pPfo) const;
@@ -258,11 +261,21 @@ private:
 
     float GetDaughterHitFraction(const pandora::ParticleFlowObject *const pPfo) const;
 
+    bool IsContained(const pandora::ParticleFlowObject *const pPfo) const;
+
+    bool IsInFiducialVolume(pandora::CartesianVector positionVector) const;
+
     void GetAllDownstreamPfos(const pandora::PfoList &inputPfoList, pandora::PfoList &outputPfoList) const;
 
     void GetAllDownstreamPfos(const pandora::ParticleFlowObject *const pPfo, pandora::PfoList &outputPfoList) const;
 
     void WriteDirectionFitVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
+
+    void WriteCosmicVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
+
+    bool MCIntersectsYFace(const pandora::MCParticle* pMCParticle) const;
+
+    bool RecoIntersectsYFace(const pandora::ParticleFlowObject *const pPfo) const;
 
     int GetInteractionType() const;
 
@@ -329,6 +342,7 @@ private:
 
     //Track direction
     TrackDirectionTool      *m_pTrackDirectionTool;
+    DirectionFittingThreeDTool *m_pDirectionFittingThreeDTool;
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------

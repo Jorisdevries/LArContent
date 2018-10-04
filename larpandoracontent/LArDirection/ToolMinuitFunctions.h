@@ -126,7 +126,7 @@ void FillLookupTable(lar_content::TrackDirectionTool::LookupTable &lookupTable, 
     std::map<double, int> reverseLookupMap;
 
     double currentEnergy(lookupTable.GetInitialEnergy()), binWidth(lookupTable.GetBinWidth());
-    int maxBin(0);
+    //int maxBin(0);
 
     for (double n = 0; n < 100000; ++n)
     {
@@ -136,16 +136,21 @@ void FillLookupTable(lar_content::TrackDirectionTool::LookupTable &lookupTable, 
         {
             double maxRange = (n * binWidth) + (currentEnergy/currentdEdx);
             lookupTable.SetMaxRange(maxRange);
-            maxBin = n;
+            //maxBin = n;
 
             lookupMap.insert(std::pair<int, double>(n, 0.0));
             reverseLookupMap.insert(std::pair<double, int>(0.0, n));
+
             break;
         }
         else
         {
-            lookupMap.insert(std::pair<int, double>(n, currentEnergy));
-            reverseLookupMap.insert(std::pair<double, int>(currentEnergy, n));
+            //sample every point when e.g. energy <= 50 MeV, every 2 points when 50 <= E <= 100 etc.
+            if (remainder(n, (1 + std::floor(currentEnergy/25.0))) == 0)
+            {
+                lookupMap.insert(std::pair<int, double>(n, currentEnergy));
+                reverseLookupMap.insert(std::pair<double, int>(currentEnergy, n));
+            }
         }
 
         currentEnergy -= (currentdEdx * binWidth);
@@ -154,14 +159,18 @@ void FillLookupTable(lar_content::TrackDirectionTool::LookupTable &lookupTable, 
     //double maxRange(lookupTable.GetMaxRange());
 
     //remove redundant entries to make lookup much faster
-    for (std::map<int, double>::iterator it = lookupMap.begin(); it != lookupMap.end(); it++)
+    //for (std::map<int, double>::iterator it = lookupMap.begin(); it != lookupMap.end(); /* no increment */)
+    /*
     {
         double n(it->first);
         double val(it->second);
         double distanceFromMaxRange((maxBin - n) * binWidth);
 
         if (n == 0 || n == maxBin)
+        {
+            ++it;
             continue;
+        }
         else
         {
             double distanceMagnitude(floor(distanceFromMaxRange/2.0));
@@ -172,11 +181,15 @@ void FillLookupTable(lar_content::TrackDirectionTool::LookupTable &lookupTable, 
                 lookupMap.erase(n);
                 reverseLookupMap.erase(val);
             }
+            else
+                ++it;
         }
     }
+    */
 
     lookupTable.SetMap(lookupMap);
     lookupTable.SetReverseMap(reverseLookupMap);
+    lookupTable.SetMass(M);
 
     if (lookupTable.GetMaxRange() == 0.f)
         std::cout << "Warning: the lookup table max range has not been correctly set." << std::endl;
@@ -240,13 +253,11 @@ double GetLengthfromEnergy(lar_content::TrackDirectionTool::LookupTable &lookupT
 void GetForwardsChiSquared(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_t )
 {
     double Ee(par[0]), L(par[1] * globalTrackLength);
+    double M = globalLookupTable.GetMass();
 
-    lar_content::TrackDirectionTool::LookupTable lookupTable = globalMuonLookupTable;
-    double M = par[2];
-
-    double Le(GetLengthfromEnergy(lookupTable, Ee));
+    double Le(GetLengthfromEnergy(globalLookupTable, Ee));
     double Ls(Le - L);
-    double Es(GetEnergyfromLength(lookupTable, Ls));
+    double Es(GetEnergyfromLength(globalLookupTable, Ls));
 
     double alpha((Es - Ee)/globalTotalCharge), beta(L/globalTotalHitWidth);
 
@@ -259,9 +270,9 @@ void GetForwardsChiSquared(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_
     for (lar_content::TrackDirectionTool::HitCharge hitCharge : binnedHitChargeVector)
     {
         double L_i(Ls + (par[1] * hitCharge.GetLongitudinalPosition()));
-        double E_i(GetEnergyfromLength(lookupTable, L_i));
+        double E_i(GetEnergyfromLength(globalLookupTable, L_i));
 
-        double dEdx_2D((beta/alpha) * BetheBloch(E_i, M));
+        double dEdx_2D(par[2] * (beta/alpha) * BetheBloch(E_i, M));
         double ChargeOverWidth(hitCharge.GetChargeOverWidth());
 
         chisquared += ( (ChargeOverWidth - dEdx_2D) * (ChargeOverWidth - dEdx_2D) )/(hitCharge.GetUncertainty() * hitCharge.GetUncertainty());
@@ -275,13 +286,11 @@ void GetForwardsChiSquared(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_
 void GetBackwardsChiSquared(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_t)
 {
     double Ee(par[0]), L(par[1] * globalTrackLength);
+    double M = globalLookupTable.GetMass();
 
-    lar_content::TrackDirectionTool::LookupTable lookupTable = globalMuonLookupTable;
-    double M = par[2];
-
-    double Le(GetLengthfromEnergy(lookupTable, Ee));
+    double Le(GetLengthfromEnergy(globalLookupTable, Ee));
     double Ls(Le - L);
-    double Es(GetEnergyfromLength(lookupTable, Ls));
+    double Es(GetEnergyfromLength(globalLookupTable, Ls));
 
     double alpha((Es - Ee)/globalTotalCharge), beta(L/globalTotalHitWidth);
 
@@ -294,9 +303,9 @@ void GetBackwardsChiSquared(Int_t &, Double_t *, Double_t &f, Double_t *par, Int
     for (lar_content::TrackDirectionTool::HitCharge hitCharge : binnedHitChargeVector)
     {
         double L_i(Ls + (par[1] * (globalTrackLength - hitCharge.GetLongitudinalPosition())));
-        double E_i(GetEnergyfromLength(lookupTable, L_i));
+        double E_i(GetEnergyfromLength(globalLookupTable, L_i));
 
-        double dEdx_2D((beta/alpha) * BetheBloch(E_i, M));
+        double dEdx_2D(par[2] * (beta/alpha) * BetheBloch(E_i, M));
         double ChargeOverWidth(hitCharge.GetChargeOverWidth());
 
         chisquared += ( (ChargeOverWidth - dEdx_2D) * (ChargeOverWidth - dEdx_2D) )/(hitCharge.GetUncertainty() * hitCharge.GetUncertainty());

@@ -13,6 +13,8 @@
 #include "Pandora/Pandora.h"
 
 #include "larpandoracontent/LArDirection/TrackDirectionTool.h"
+#include "larpandoracontent/LArDirection/DirectionFittingThreeDTool.h"
+
 #include "larpandoracontent/LArDirection/DirectionClusterSplitting.h"
 #include "larpandoracontent/LArDirection/DirectionAnalysisAlgorithm.h"
 #include "larpandoracontent/LArDirection/DirectionFlowProbabilityTool.h"
@@ -274,6 +276,7 @@
 #define LAR_ALGORITHM_TOOL_LIST(d)                                                                                              \
     d("LArBdtBeamParticleId",                   BdtBeamParticleIdTool)                                                          \
     d("LArTrackDirectionTool",                  TrackDirectionTool)                                                             \
+    d("LArDirectionFittingThreeDTool",          DirectionFittingThreeDTool)                                                     \
     d("LArDirectionFlowProbabilityTool",        DirectionFlowProbabilityTool)                                                   \
     d("LArBeamParticleId",                      BeamParticleIdTool)                                                             \
     d("LArCosmicRayTagging",                    CosmicRayTaggingTool)                                                           \
