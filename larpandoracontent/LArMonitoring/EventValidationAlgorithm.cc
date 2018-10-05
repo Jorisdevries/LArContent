@@ -817,14 +817,20 @@ void EventValidationAlgorithm::WriteEventDescription(const pandora::MCParticleLi
         {
             firstNeutrinoPfoMCPDG = LArMCParticleHelper::GetMainMCParticle(trueNeutrinoPfos.front())->GetParticleId();
             firstNeutrinoPfoNumberHits = this->CountPfoHits(trueNeutrinoPfos.front());
-            firstNeutrinoPfoParentMCPDG = (LArMCParticleHelper::GetMainMCParticle(trueNeutrinoPfos.front()))->GetParentList().front()->GetParticleId();
+            firstNeutrinoPfoParentMCPDG = -1;
+
+            if ((LArMCParticleHelper::GetMainMCParticle(trueNeutrinoPfos.front()))->GetParentList().size() > 0)
+                firstNeutrinoPfoParentMCPDG = (LArMCParticleHelper::GetMainMCParticle(trueNeutrinoPfos.front()))->GetParentList().front()->GetParticleId();
         }
 
         if (trueNeutrinoPfos.size() > 1)
         {
             secondNeutrinoPfoMCPDG = LArMCParticleHelper::GetMainMCParticle(*(std::next(trueNeutrinoPfos.begin())))->GetParticleId();
             secondNeutrinoPfoNumberHits = this->CountPfoHits(*(std::next(trueNeutrinoPfos.begin())));
-            secondNeutrinoPfoParentMCPDG = (LArMCParticleHelper::GetMainMCParticle(*(std::next(trueNeutrinoPfos.begin()))))->GetParentList().front()->GetParticleId();
+            secondNeutrinoPfoParentMCPDG = -1;
+
+            if ((LArMCParticleHelper::GetMainMCParticle(*(std::next(trueNeutrinoPfos.begin()))))->GetParentList().size() > 0)
+                secondNeutrinoPfoParentMCPDG = (LArMCParticleHelper::GetMainMCParticle(*(std::next(trueNeutrinoPfos.begin()))))->GetParentList().front()->GetParticleId();
         }
     }
     catch (...)
@@ -953,6 +959,7 @@ std::vector<int> EventValidationAlgorithm::GetNeutrinoInducedHits(const pandora:
 
     int nRecoNuClustersTrueNeutrinoHits(this->GetTrueNeutrinoHits(recoNuClusterHits, hitToMCMap).size()), nRecoNuIsolatedTrueNeutrinoHits(this->GetTrueNeutrinoHits(recoNuIsolatedHits, hitToMCMap).size()), nRecoNuAllTrueNeutrinoHits(this->GetTrueNeutrinoHits(recoNuAllHits, hitToMCMap).size());
 
+    /*
     std::cout << "------------------------------------" << std::endl;
     std::cout << "nTrueNeutrinoInducedHits: " << nTrueNeutrinoInducedHits << std::endl;
     //std::cout << "nPfoClustersTrueNeutrinoHits: " << nPfoClustersTrueNeutrinoHits << std::endl;
@@ -962,7 +969,7 @@ std::vector<int> EventValidationAlgorithm::GetNeutrinoInducedHits(const pandora:
     //std::cout << "nRecoNuIsolatedTrueNeutrinoHits: " << nRecoNuIsolatedTrueNeutrinoHits << std::endl;
     std::cout << "nRecoNuAllTrueNeutrinoHits: " << nRecoNuAllTrueNeutrinoHits << std::endl;
     std::cout << "------------------------------------" << std::endl;
-
+    */
 
    if (m_viewEvent)
    {
@@ -1390,6 +1397,9 @@ bool EventValidationAlgorithm::IsContained(const ParticleFlowObject *const pPfo)
     LArTrackStateVector trackStateVector; 
     LArPfoHelper::GetSlidingFitTrajectory(pPfo, LArPfoHelper::GetVertex(pPfo), m_slidingFitWindow, LArGeometryHelper::GetWireZPitch(this->GetPandora()), trackStateVector);
 
+    if (trackStateVector.size() == 0)
+        return false;
+
     CartesianVector trackBeginpoint(trackStateVector.front().GetPosition()), trackEndpoint(trackStateVector.back().GetPosition());   
 
     if (this->IsInFiducialVolume(trackBeginpoint) && this->IsInFiducialVolume(trackEndpoint))
@@ -1541,6 +1551,18 @@ void EventValidationAlgorithm::WriteCosmicVariables(const ParticleFlowObject *co
     LArTrackStateVector trackStateVector;
     LArPfoHelper::GetSlidingFitTrajectory(pPfo, LArPfoHelper::GetVertex(pPfo), m_slidingFitWindow, LArGeometryHelper::GetWireZPitch(this->GetPandora()), trackStateVector);
 
+    if (trackStateVector.size() == 0)
+    {
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MCCosmicRay", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MCFiducialLowY", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "RecoFiducialLowY", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MCIntersectsYFace", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "RecoIntersectsYFace", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MCLowestTenCmTotalCharge", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "RecoLowestTenCmTotalCharge", -1));
+        return;
+    }
+
     std::sort(trackStateVector.begin(), trackStateVector.end(), [](TrackState pTrackState1, TrackState pTrackState2) -> bool { return pTrackState1.GetPosition().GetY() < pTrackState2.GetPosition().GetY(); });
 
     const pandora::CartesianVector recoLowYPosition(trackStateVector.front().GetPosition());
@@ -1648,7 +1670,13 @@ void EventValidationAlgorithm::WritePIDVariables(const ParticleFlowObject *const
     float pfoLength(sqrt(LArPfoHelper::GetThreeDLengthSquared(pPfo)));
     float hitChargeRangeOverLength(pfoLength > 1.0 ? (maxHitCharge - minHitCharge)/pfoLength : 0.f);
 
-    float leftSumCharge(caloHitVector.at(0)->GetInputEnergy() + caloHitVector.at(1)->GetInputEnergy() + caloHitVector.at(2)->GetInputEnergy()), rightSumCharge(caloHitVector.at(caloHitVector.size() - 3)->GetInputEnergy() + caloHitVector.at(caloHitVector.size() - 2)->GetInputEnergy() + caloHitVector.at(caloHitVector.size() - 1)->GetInputEnergy());
+    float leftSumCharge(-1.f), rightSumCharge(-1.f);
+
+    if (caloHitVector.size() >= 3)
+    {
+        leftSumCharge = (caloHitVector.at(0)->GetInputEnergy() + caloHitVector.at(1)->GetInputEnergy() + caloHitVector.at(2)->GetInputEnergy());
+        rightSumCharge = (caloHitVector.at(caloHitVector.size() - 3)->GetInputEnergy() + caloHitVector.at(caloHitVector.size() - 2)->GetInputEnergy() + caloHitVector.at(caloHitVector.size() - 1)->GetInputEnergy());
+    }
 
     float minSumCharge(std::min(leftSumCharge, rightSumCharge)), maxSumCharge(std::max(leftSumCharge, rightSumCharge));
     float sumChargeRatio(maxSumCharge/minSumCharge);

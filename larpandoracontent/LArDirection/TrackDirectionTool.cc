@@ -38,8 +38,8 @@ namespace lar_content
 
 TrackDirectionTool::TrackDirectionTool() :
     m_slidingFitWindow(5),
-    m_minClusterCaloHits(5),
-    m_minClusterLength(0.f),
+    m_minClusterCaloHits(10),
+    m_minClusterLength(5.f),
     m_numberTrackEndHits(100000),
     m_enableFragmentRemoval(true),
     m_enableSplitting(true),

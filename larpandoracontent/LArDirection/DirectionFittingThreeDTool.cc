@@ -38,7 +38,7 @@ namespace lar_content
 DirectionFittingThreeDTool::DirectionFittingThreeDTool() :
     m_endpointRange(10.f),
     m_slidingFitWindow(5),
-    m_minClusterCaloHits(20),
+    m_minClusterCaloHits(10),
     m_minClusterLength(5.f),
     m_tableInitialEnergy(250.f),
     m_tableStepSize(0.01f)
@@ -72,6 +72,10 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
         HitObjectVector hitObjectVector, filteredHitObjectVector, endpointHitObjectVector;
 
         this->FillHitObjectVector(pPfo, hitObjectVector);
+
+        if (hitObjectVector.size() < m_minClusterCaloHits)
+            throw STATUS_CODE_FAILURE;
+
         this->FilterHitObjectVector(hitObjectVector, filteredHitObjectVector);
         this->SelectEndpoint(filteredHitObjectVector, endpointHitObjectVector);
 
@@ -79,7 +83,7 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
         this->FitHitObjectVector(endpointHitObjectVector, finalDirectionFitObject);
         this->SetMCInformation(pPfo, finalDirectionFitObject);
 
-        std::cout << "------------------------------" << std::endl;
+        /*
         std::cout << "MC PDG: " << finalDirectionFitObject.GetMCParent() << std::endl;
         std::cout << "Contained: " << finalDirectionFitObject.GetContained() << std::endl;
         std::cout << "Fit mass: " << finalDirectionFitObject.GetFitMass() << std::endl;
@@ -87,6 +91,7 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
         std::cout << "MinChiSquaredPerHit: " << finalDirectionFitObject.GetMinChiSquaredPerHit() << std::endl;
         std::cout << "Number hits: " << finalDirectionFitObject.GetNHits() << std::endl;
         std::cout << "------------------------------" << std::endl;
+        */
 
         return finalDirectionFitObject;
     }
