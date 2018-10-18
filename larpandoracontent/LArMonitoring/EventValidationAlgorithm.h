@@ -126,6 +126,22 @@ private:
         LArMCParticleHelper::MCParticleToPfoHitSharingMap   m_interpretedMCToPfoHitSharingMap;      ///< The interpreted mc to pfo hit sharing map
     };
 
+    class HitWithDistance
+    {
+    public:
+
+        const pandora::CaloHit*       m_calohit;
+        float                         m_distance;
+
+        HitWithDistance(const pandora::CaloHit* pCaloHit, float &distance)
+        {
+            m_calohit = pCaloHit;
+            m_distance = distance;
+        }
+
+    private:
+    };
+
     pandora::StatusCode Run();
 
     /**
@@ -263,6 +279,8 @@ private:
 
     bool IsContained(const pandora::ParticleFlowObject *const pPfo) const;
 
+    bool IsContained(const pandora::MCParticle* const pMCParticle) const;
+
     bool IsInFiducialVolume(pandora::CartesianVector positionVector) const;
 
     void GetAllDownstreamPfos(const pandora::PfoList &inputPfoList, pandora::PfoList &outputPfoList) const;
@@ -272,6 +290,8 @@ private:
     void WriteDirectionFitVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
 
     void WriteCosmicVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
+
+    void FilterHitCollection(const pandora::Cluster* const pCluster, int nNeighboursToConsider, std::vector<HitWithDistance> &hitWithDistanceVector) const;
 
     bool MCIntersectsYFace(const pandora::MCParticle* pMCParticle) const;
 
