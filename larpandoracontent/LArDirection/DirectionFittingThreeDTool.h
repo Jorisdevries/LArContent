@@ -60,22 +60,26 @@ public:
     {
     public:
 
-        HitObject(const pandora::CaloHit* caloHit, float &longitudinalPosition, float &hitEnergy, float &hitWidth, float &segmentLength);
+        HitObject(const pandora::CaloHit* caloHit, float &longitudinalPosition, float &hitEnergy, float &hitWidth, float &segmentLength, float &dQdx, float &dEdx);
 
         const pandora::CaloHit* GetCaloHit() const;
+        void SetLongitudinalPosition(float longitudinalPosition);
         float GetLongitudinalPosition() const;
-        float GetHitEnergy() const;
-        float GetHitWidth() const;
+        float GetEnergy() const;
+        float GetWidth() const;
+        void SetSegmentLength(float segmentLength);
         float GetSegmentLength() const;
+        float GetdQdx() const;
+        float GetdEdx() const;
 
         void SetDistanceToNN(float &distance);
         float GetDistanceToNN() const;
 
-        void SetForwardsFitEnergy(float forwardsFitEnergy);
-        float GetForwardsFitEnergy() const;
+        void SetForwardsFitdEdx(float forwardsFitdEdx);
+        float GetForwardsFitdEdx() const;
 
-        void SetBackwardsFitEnergy(float backwardsFitEnergy);
-        float GetBackwardsFitEnergy() const;
+        void SetBackwardsFitdEdx(float backwardsFitdEdx);
+        float GetBackwardsFitdEdx() const;
 
     private:
         const pandora::CaloHit*                    m_calohit;
@@ -83,6 +87,9 @@ public:
         float                                      m_hitenergy;
         float                                      m_hitwidth;
         float                                      m_segmentlength;
+        float                                      m_dqdx;        
+        float                                      m_dedx;        
+
         float                                      m_distancetonearestneighbour;
         float                                      m_forwardsfitenergy;
         float                                      m_backwardsfitenergy;
@@ -156,21 +163,16 @@ public:
     {
     public:
         DirectionFitObject();
-        DirectionFitObject(HitObjectVector &hitObjectVector, int &numberHits, float &forwardsChiSquared, float &backwardsChiSquared, FitParameters &fitParameters);
+        DirectionFitObject(HitObjectVector &hitObjectVector, int &numberHits, float &forwardsChiSquared, float &backwardsChiSquared, FitParameters &fitParameters, int &fitStatus);
 
         DirectionFittingThreeDTool::HitObjectVector GetHitObjectVector();
 
-        void SetForwardsChiSquared(float forwardsChiSquared);
         float GetForwardsChiSquared();
-
-        void SetBackwardsChiSquared(float backwardsChiSquared);
         float GetBackwardsChiSquared();
-
-        void SetNHits(int nHits);
-        int GetNHits();
-
         float GetForwardsChiSquaredPerHit();
         float GetBackwardsChiSquaredPerHit();
+
+        int GetNHits();
 
         float GetMinChiSquared();
         float GetMinChiSquaredPerHit();
@@ -182,16 +184,13 @@ public:
         void SetContained(bool isContained);
         bool GetContained();
 
-        void SetFitStatus(int fitStatus);
-        int GetFitStatus();
-
-        void SetFitMass(float fitMass);
-        float GetFitMass();
-
         void DrawFit();
 
         void SetFitParameters(FitParameters &fitParameters);
         FitParameters GetFitParameters();
+        
+        float GetFitMass();
+        int GetFitStatus();
 
     private:
         HitObjectVector     m_hitobjectvector;
@@ -199,19 +198,17 @@ public:
         int                 m_nhits;
         int                 m_mcparent;
         bool                m_contained;
-        
-        int                 m_fitstatus;
-        float               m_fitmass;
 
         float               m_forwardschisquared;
         float               m_backwardschisquared;
 
         FitParameters       m_fitparameters;
+        int                 m_fitstatus;
     };
 
     //-----------------------------------------------------------------------------------------------
 
-    DirectionFittingThreeDTool::DirectionFitObject GetPfoDirection(const pandora::ParticleFlowObject *const pPfo, float particleMass = 100.0);
+    DirectionFittingThreeDTool::DirectionFitObject GetPfoDirection(const pandora::ParticleFlowObject *const pPfo);
 
     private:
 
@@ -220,6 +217,12 @@ public:
     void FillHitObjectVector(const pandora::ParticleFlowObject *const pPfo, HitObjectVector &hitObjectVector);
 
     void GetTrackLength(HitObjectVector &hitEnergyVector, float &trackLength);
+
+    float GetDriftCoordinateCorrection(const pandora::CartesianVector &positionVector);
+
+    float GetYZCoordinateCorrection(const pandora::CartesianVector &positionVector);
+
+    float CalculateModBoxdEdx(float &dQdx);
 
     void FilterHitObjectVector(HitObjectVector &hitObjectVector, HitObjectVector &filteredHitObjectVector);
 
@@ -230,6 +233,8 @@ public:
     void SetNearestNeighbourValues(HitObjectVector &innerHitObjectVector, int &nNeighboursToConsider);
 
     void FitHitObjectVector(HitObjectVector &hitObjectVector, DirectionFittingThreeDTool::DirectionFitObject &fitResult);
+
+    void PerformFits(HitObjectVector &hitObjectVector, float &forwardsChiSquared, float &backwardsChiSquared, FitParameters &fitParameters, int &fitStatus);
 
     void SetFinalFitValues(HitObjectVector &hitObjectVector, float &forwardsChiSquared, float &backwardsChiSquared, double (&fitParameters)[2], bool forwards);
 
@@ -262,12 +267,14 @@ inline pandora::AlgorithmTool *DirectionFittingThreeDTool::Factory::CreateAlgori
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline DirectionFittingThreeDTool::HitObject::HitObject(const pandora::CaloHit* caloHit, float &longitudinalPosition, float &hitEnergy, float &hitWidth, float &segmentLength) : 
+inline DirectionFittingThreeDTool::HitObject::HitObject(const pandora::CaloHit* caloHit, float &longitudinalPosition, float &hitEnergy, float &hitWidth, float &segmentLength, float &dQdx, float &dEdx) : 
     m_calohit(caloHit),
     m_longitudinalposition(longitudinalPosition),
     m_hitenergy(hitEnergy),
     m_hitwidth(hitWidth),
     m_segmentlength(segmentLength),
+    m_dqdx(dQdx),
+    m_dedx(dEdx),
     m_distancetonearestneighbour(0.f),
     m_forwardsfitenergy(0.f),
     m_backwardsfitenergy(0.f)
@@ -283,6 +290,13 @@ inline const pandora::CaloHit* DirectionFittingThreeDTool::HitObject::GetCaloHit
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+inline void DirectionFittingThreeDTool::HitObject::SetLongitudinalPosition(float longitudinalPosition) 
+{
+    m_longitudinalposition = longitudinalPosition;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 inline float DirectionFittingThreeDTool::HitObject::GetLongitudinalPosition() const
 {
     return m_longitudinalposition;
@@ -290,16 +304,23 @@ inline float DirectionFittingThreeDTool::HitObject::GetLongitudinalPosition() co
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline float DirectionFittingThreeDTool::HitObject::GetHitEnergy() const
+inline float DirectionFittingThreeDTool::HitObject::GetEnergy() const
 {
     return m_hitenergy;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline float DirectionFittingThreeDTool::HitObject::GetHitWidth() const
+inline float DirectionFittingThreeDTool::HitObject::GetWidth() const
 {
     return m_hitwidth;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline void DirectionFittingThreeDTool::HitObject::SetSegmentLength(float segmentLength) 
+{
+    m_segmentlength = segmentLength;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -307,6 +328,20 @@ inline float DirectionFittingThreeDTool::HitObject::GetHitWidth() const
 inline float DirectionFittingThreeDTool::HitObject::GetSegmentLength() const
 {
     return m_segmentlength;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float DirectionFittingThreeDTool::HitObject::GetdQdx() const
+{
+    return m_dqdx;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float DirectionFittingThreeDTool::HitObject::GetdEdx() const
+{
+    return m_dedx;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -325,26 +360,26 @@ inline float DirectionFittingThreeDTool::HitObject::GetDistanceToNN() const
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline void DirectionFittingThreeDTool::HitObject::SetForwardsFitEnergy(float forwardsFitEnergy) 
+inline void DirectionFittingThreeDTool::HitObject::SetForwardsFitdEdx(float forwardsFitdEdx) 
 {
-    m_forwardsfitenergy = forwardsFitEnergy;
+    m_forwardsfitenergy = forwardsFitdEdx;
 }
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline float DirectionFittingThreeDTool::HitObject::GetForwardsFitEnergy() const 
+inline float DirectionFittingThreeDTool::HitObject::GetForwardsFitdEdx() const 
 {
     return m_forwardsfitenergy;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline void DirectionFittingThreeDTool::HitObject::SetBackwardsFitEnergy(float backwardsFitEnergy)
+inline void DirectionFittingThreeDTool::HitObject::SetBackwardsFitdEdx(float backwardsFitdEdx)
 {
-    m_backwardsfitenergy = backwardsFitEnergy;
+    m_backwardsfitenergy = backwardsFitdEdx;
 }
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline float DirectionFittingThreeDTool::HitObject::GetBackwardsFitEnergy() const 
+inline float DirectionFittingThreeDTool::HitObject::GetBackwardsFitdEdx() const 
 {
     return m_backwardsfitenergy;
 }
@@ -526,8 +561,6 @@ inline DirectionFittingThreeDTool::DirectionFitObject::DirectionFitObject()
     m_nhits = 0;
     m_mcparent = 0;
     m_contained = false;
-    m_fitstatus = 999;
-    m_fitmass = 0.f;
     m_forwardschisquared = 0.f;
     m_backwardschisquared = 0.f;
     m_fitparameters = emptyFitParameters;
@@ -535,17 +568,16 @@ inline DirectionFittingThreeDTool::DirectionFitObject::DirectionFitObject()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline DirectionFittingThreeDTool::DirectionFitObject::DirectionFitObject(HitObjectVector &hitObjectVector, int &numberHits, float &forwardsChiSquared, float &backwardsChiSquared, FitParameters &fitParameters) :
+inline DirectionFittingThreeDTool::DirectionFitObject::DirectionFitObject(HitObjectVector &hitObjectVector, int &numberHits, float &forwardsChiSquared, float &backwardsChiSquared, FitParameters &fitParameters, int &fitStatus) :
     m_hitobjectvector(hitObjectVector),
     m_nhits(numberHits),
     m_forwardschisquared(forwardsChiSquared),
     m_backwardschisquared(backwardsChiSquared),
-    m_fitparameters(fitParameters)
+    m_fitparameters(fitParameters),
+    m_fitstatus(fitStatus)
 {
     m_mcparent = 0;
     m_contained = false;
-    m_fitstatus = 999;
-    m_fitmass = 0.f;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -557,23 +589,9 @@ inline DirectionFittingThreeDTool::HitObjectVector DirectionFittingThreeDTool::D
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline void DirectionFittingThreeDTool::DirectionFitObject::SetForwardsChiSquared(float forwardsChiSquared)
-{
-    m_forwardschisquared = forwardsChiSquared;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
 inline float DirectionFittingThreeDTool::DirectionFitObject::GetForwardsChiSquared()
 {
     return m_forwardschisquared;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline void DirectionFittingThreeDTool::DirectionFitObject::SetBackwardsChiSquared(float backwardsChiSquared)
-{
-    m_backwardschisquared = backwardsChiSquared;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -599,16 +617,9 @@ inline float DirectionFittingThreeDTool::DirectionFitObject::GetBackwardsChiSqua
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline void DirectionFittingThreeDTool::DirectionFitObject::SetNHits(int nHits)
-{
-    m_nhits = nHits;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
 inline int DirectionFittingThreeDTool::DirectionFitObject::GetNHits()
 {
-    return m_nhits;
+    return m_hitobjectvector.size();
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -662,34 +673,6 @@ inline bool DirectionFittingThreeDTool::DirectionFitObject::GetContained()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-inline void DirectionFittingThreeDTool::DirectionFitObject::SetFitStatus(int fitStatus)
-{
-   m_fitstatus = fitStatus; 
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline int DirectionFittingThreeDTool::DirectionFitObject::GetFitStatus()
-{
-    return m_fitstatus; 
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline void DirectionFittingThreeDTool::DirectionFitObject::SetFitMass(float fitMass)
-{
-   m_fitmass = fitMass; 
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-inline float DirectionFittingThreeDTool::DirectionFitObject::GetFitMass()
-{
-    return m_fitmass; 
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
 inline void DirectionFittingThreeDTool::DirectionFitObject::DrawFit()
 {
     float firstLengthPosition(m_hitobjectvector.front().GetLongitudinalPosition());
@@ -706,33 +689,33 @@ inline void DirectionFittingThreeDTool::DirectionFitObject::DrawFit()
     
     for (HitObject hitObject : hitObjectVector)
     {    
-        Hits->SetPoint(n, hitObject.GetLongitudinalPosition(), hitObject.GetHitEnergy());
+        Hits->SetPoint(n, hitObject.GetLongitudinalPosition(), hitObject.GetdEdx());
     
-        if (hitObject.GetHitEnergy() < minEnergy)
-            minEnergy = hitObject.GetHitEnergy();
+        if (hitObject.GetdEdx() < minEnergy)
+            minEnergy = hitObject.GetdEdx();
 
-        if (hitObject.GetHitEnergy() > maxEnergy)
-            maxEnergy = hitObject.GetHitEnergy();
+        if (hitObject.GetdEdx() > maxEnergy)
+            maxEnergy = hitObject.GetdEdx();
 
         if (m_forwardschisquared/m_nhits < m_backwardschisquared/m_nhits)
         {
-            fitHits->SetPoint(n, hitObject.GetLongitudinalPosition(), hitObject.GetForwardsFitEnergy());
+            fitHits->SetPoint(n, hitObject.GetLongitudinalPosition(), hitObject.GetForwardsFitdEdx());
 
-            if (hitObject.GetForwardsFitEnergy() < minEnergy)
-                minEnergy = hitObject.GetForwardsFitEnergy();
+            if (hitObject.GetForwardsFitdEdx() < minEnergy)
+                minEnergy = hitObject.GetForwardsFitdEdx();
 
-            if (hitObject.GetForwardsFitEnergy() > maxEnergy)
-                maxEnergy = hitObject.GetForwardsFitEnergy();
+            if (hitObject.GetForwardsFitdEdx() > maxEnergy)
+                maxEnergy = hitObject.GetForwardsFitdEdx();
         }
         else
         {
-            fitHits->SetPoint(n, hitObject.GetLongitudinalPosition(), hitObject.GetBackwardsFitEnergy());
+            fitHits->SetPoint(n, hitObject.GetLongitudinalPosition(), hitObject.GetBackwardsFitdEdx());
 
-            if (hitObject.GetBackwardsFitEnergy() < minEnergy)
-                minEnergy = hitObject.GetBackwardsFitEnergy();
+            if (hitObject.GetBackwardsFitdEdx() < minEnergy)
+                minEnergy = hitObject.GetBackwardsFitdEdx();
 
-            if (hitObject.GetBackwardsFitEnergy() > maxEnergy)
-                maxEnergy = hitObject.GetBackwardsFitEnergy();
+            if (hitObject.GetBackwardsFitdEdx() > maxEnergy)
+                maxEnergy = hitObject.GetBackwardsFitdEdx();
         }
 
         n++; 
@@ -778,6 +761,20 @@ inline void DirectionFittingThreeDTool::DirectionFitObject::SetFitParameters(Fit
 inline DirectionFittingThreeDTool::FitParameters DirectionFittingThreeDTool::DirectionFitObject::GetFitParameters()
 {
     return m_fitparameters;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float DirectionFittingThreeDTool::DirectionFitObject::GetFitMass()
+{
+    return m_fitparameters.GetParameterOne();
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline int DirectionFittingThreeDTool::DirectionFitObject::GetFitStatus()
+{
+    return m_fitparameters.GetParameterOne();
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

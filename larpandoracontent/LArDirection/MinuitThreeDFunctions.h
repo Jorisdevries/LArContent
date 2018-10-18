@@ -29,7 +29,7 @@ const double X0 = 0.2000;
 const double delta0 = 0.0;
 
 //----------------------------------------------------------------------------------------------------------------------------------
-
+/*
 void BinHitObjectVector(lar_content::DirectionFittingThreeDTool::HitObjectVector &hitObjectVector, lar_content::DirectionFittingThreeDTool::HitObjectVector &binnedHitObjectVector)
 {   
     float binSize = (hitObjectVector.size() > 50 ? (0.5 + (hitObjectVector.size() - 50) * 2.5/300) : 0.5);
@@ -49,8 +49,8 @@ void BinHitObjectVector(lar_content::DirectionFittingThreeDTool::HitObjectVector
                 break;
             
             meanBinPosition += hitObject.GetLongitudinalPosition();
-            meanBinCharge += hitObject.GetHitEnergy();
-            meanBinWidth += hitObject.GetHitWidth();
+            meanBinCharge += hitObject.GetEnergy();
+            meanBinWidth += hitObject.GetWidth();
             meanBinSegmentLength += hitObject.GetSegmentLength();
 
             ++nHitsBin;
@@ -68,7 +68,7 @@ void BinHitObjectVector(lar_content::DirectionFittingThreeDTool::HitObjectVector
         binnedHitObjectVector.push_back(binnedHitObject);
     }
 }
-
+*/
 //----------------------------------------------------------------------------------------------------------------------------------
 
 double DensityCorrection3D(double &T, double &M)
@@ -88,17 +88,17 @@ double DensityCorrection3D(double &T, double &M)
 
 //----------------------------------------------------------------------------------------------------------------------------------
 
-double BetheBloch3D(double &T, double &M)
+double BetheBloch3D(double T, double M)
 {
     double p(std::sqrt((T*T) + 2*T*M));
     double gamma(std::sqrt(1 + ((p/M) * (p/M))));
     double beta(std::sqrt(1 - 1 / (gamma*gamma)));
 
     double T_max(2 * m_e * (beta*gamma*beta*gamma) / (1 + 2 * gamma * m_e / M + ((m_e/M) * (m_e/M))));
-    //return rho * ((K * z * z * Z) / A) * (0.5*std::log(2 * m_e * T_max * (beta*gamma*beta*gamma) / (I*I) ) - (beta*beta) - (0.5*DensityCorrection3D(p, M))) / (beta*beta); //in MeV/cm
+    return rho * ((K * z * z * Z) / A) * (0.5*std::log(2 * m_e * T_max * (beta*gamma*beta*gamma) / (I*I) ) - (beta*beta) - (0.5*DensityCorrection3D(p, M))) / (beta*beta); //in MeV/cm
 
-    double W_cut(0.9 * T_max);
-    return rho * ((K * z * z * Z) / A) * (0.5*std::log(2 * m_e * W_cut * (beta*gamma*beta*gamma) / (I*I) ) - ((beta*beta*0.5) * (1 + (W_cut/T_max))) - (0.5*DensityCorrection3D(p, M))) / (beta*beta); 
+    //double W_cut(0.9 * T_max);
+    //return rho * ((K * z * z * Z) / A) * (0.5*std::log(2 * m_e * W_cut * (beta*gamma*beta*gamma) / (I*I) ) - ((beta*beta*0.5) * (1 + (W_cut/T_max))) - (0.5*DensityCorrection3D(p, M))) / (beta*beta); 
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -106,7 +106,7 @@ double BetheBloch3D(double &T, double &M)
 void FillLookupTable3D(lar_content::DirectionFittingThreeDTool::LookupTable &lookupTable, double M, double L_offset)
 {
     std::map<int, double> lookupMap, finalLookupMap;
-    double endpointRange(globalEndpointRange);
+    double endpointRange(globalTrackLength3D != 0 ? globalTrackLength3D : globalEndpointRange), bufferRange(1.0);
 
     double currentEnergy(lookupTable.GetInitialEnergy()), binWidth(lookupTable.GetBinWidth());
     int maxBin(0);
@@ -133,16 +133,29 @@ void FillLookupTable3D(lar_content::DirectionFittingThreeDTool::LookupTable &loo
         currentEnergy -= (currentdEdx * binWidth);
     }
 
-    int i(0);
+    int i(-bufferRange/binWidth);
     for (const auto &entry : lookupMap)
     {
         double residualRange((maxBin - entry.first) * binWidth);
 
-        if (residualRange <= (endpointRange + L_offset) && residualRange >= L_offset)
+        if (residualRange <= (endpointRange + L_offset + bufferRange) && residualRange >= L_offset)
         {
             finalLookupMap.emplace(i, entry.second);
             ++i;
         }
+        
+        if (residualRange < L_offset && residualRange >= L_offset - bufferRange && entry.first < maxBin)        
+        {
+            finalLookupMap.emplace(i, entry.second);
+            ++i;
+        }
+
+        if (residualRange < L_offset && residualRange >= L_offset - bufferRange && entry.first >= maxBin)        
+        {
+            finalLookupMap.emplace(i, 0.0);
+            ++i;
+        }
+
     }
 
     lookupTable.SetMap(finalLookupMap);
@@ -151,6 +164,7 @@ void FillLookupTable3D(lar_content::DirectionFittingThreeDTool::LookupTable &loo
     lookupTable.SetMaxBin(i - 1);
 
     /*
+    //Draw
     TGraphErrors *Hits = new TGraphErrors(lookupMap.size());
 
     int n(0);
@@ -211,23 +225,21 @@ double GetBackwardsFitEnergy(lar_content::DirectionFittingThreeDTool::HitObject 
 void GetForwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_t )
 {
     double L_offset(par[0]);
-    double M = globalLookupTable3D.GetMass();
+    double M = par[1];
 
-    if (!globalFixedMass)
-    {
-        M = par[1];
-        FillLookupTable3D(globalLookupTable3D, M, L_offset);
-    }
+    FillLookupTable3D(globalLookupTable3D, M, L_offset);
 
     double chiSquared(0.0);
 
     for (lar_content::DirectionFittingThreeDTool::HitObject &hitObject : *pMinuitVector3D)
     {
-        double hitEnergy(hitObject.GetHitEnergy());
-        double fitEnergy(GetForwardsFitEnergy(hitObject));
+        double hitdEdx(hitObject.GetdEdx());
+        int binNumber(std::floor(hitObject.GetLongitudinalPosition()/globalLookupTable3D.GetBinWidth()));
+        double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+
         double hitUncertainty(1.0);
 
-        chiSquared += ((hitEnergy - fitEnergy) * (hitEnergy - fitEnergy) )/(hitUncertainty * hitUncertainty);
+        chiSquared += ((hitdEdx - fitdEdx) * (hitdEdx - fitdEdx) )/(hitUncertainty * hitUncertainty);
     }
 
     f = chiSquared;
@@ -238,23 +250,21 @@ void GetForwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, In
 void GetBackwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_t)
 {
     double L_offset(par[0]);
-    double M = globalLookupTable3D.GetMass();
+    double M = par[1];
 
-    if (!globalFixedMass)
-    {
-        M = par[1];
-        FillLookupTable3D(globalLookupTable3D, M, L_offset);
-    }
+    FillLookupTable3D(globalLookupTable3D, M, L_offset);
 
     double chiSquared(0.0);
 
     for (lar_content::DirectionFittingThreeDTool::HitObject &hitObject : *pMinuitVector3D)
     {
-        double hitEnergy(hitObject.GetHitEnergy());
-        double fitEnergy(GetBackwardsFitEnergy(hitObject));
+        double hitdEdx(hitObject.GetdEdx());
+        int binNumber(std::floor((globalTrackLength3D - hitObject.GetLongitudinalPosition())/globalLookupTable3D.GetBinWidth()));
+        double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+
         double hitUncertainty(1.0);
 
-        chiSquared += ((hitEnergy - fitEnergy) * (hitEnergy - fitEnergy) )/(hitUncertainty * hitUncertainty);
+        chiSquared += ((hitdEdx - fitdEdx) * (hitdEdx - fitdEdx) )/(hitUncertainty * hitUncertainty);
     }
 
     f = chiSquared;

@@ -388,6 +388,8 @@ public:
 
     void TrackEndFilter(HitChargeVector &hitChargeVector, DirectionFitObject &directionFitObject);
 
+    void Regularise(HitChargeVector &hitChargeVector, HitChargeVector &filteredHitChargeVector);
+
     void AttemptFragmentRemoval(HitChargeVector &hitChargeVector, std::vector<JumpObject> &jumpsVector, HitChargeVector &filteredHitChargeVector, float &finalSplitPosition);
 
     void FindLargestJumps(HitChargeVector &hitChargeVector, std::vector<JumpObject> &leftJumps);

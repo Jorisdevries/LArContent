@@ -44,7 +44,7 @@ TrackDirectionTool::TrackDirectionTool() :
     m_enableFragmentRemoval(true),
     m_enableSplitting(true),
     m_tableInitialEnergy(2000.f),
-    m_tableStepSize(1.0f),
+    m_tableStepSize(0.5f),
     m_writeTable(false),
     m_lookupTableFileName("lookuptable.root"),
     m_probabilityFileName("probability.root"),
@@ -435,8 +435,11 @@ void TrackDirectionTool::FillHitChargeVector(const Cluster *const pCluster, HitC
         const CaloHit *const pCaloHit(*hitIter);
         const CartesianVector caloHitPosition(pCaloHit->GetPositionVector());
         float hitWidth(pCaloHit->GetCellSize1());
-
         float caloHitEnergy(pCaloHit->GetInputEnergy());
+
+        if (!((hitWidth > 0.3 && hitWidth < 1.8) && (caloHitEnergy > 50.0 && caloHitEnergy < 600.0)))
+            continue;
+
         caloHitEnergy *= 273.5; //ADC to electron
         caloHitEnergy *= 23.6/1000000; //ionisation energy per electron in MeV
         caloHitEnergy /= 0.62;
@@ -459,18 +462,19 @@ void TrackDirectionTool::FillHitChargeVector(const Cluster *const pCluster, HitC
 
 void TrackDirectionTool::TrackInnerFilter(HitChargeVector &hitChargeVector, HitChargeVector &filteredHitChargeVector)
 {
-    if (hitChargeVector.size() <= 5)
-    {
-        filteredHitChargeVector = hitChargeVector;
-        return;
-    }
-
     //Fill endpoint protected area into filtered vector and put all other hits in a separate vector
     float endpointProtectionRange(0.05);
+
     filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(),  hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size());
     filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size(), hitChargeVector.end());
 
     HitChargeVector innerHitChargeVector(hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size());
+
+    if (innerHitChargeVector.size() < 5)
+    {
+        filteredHitChargeVector = hitChargeVector;
+        return;
+    }
 
     int nNeighboursToConsider(5);
     this->SetNearestNeighbourValues(innerHitChargeVector, nNeighboursToConsider);
@@ -543,10 +547,12 @@ void TrackDirectionTool::SimpleTrackEndFilter(HitChargeVector &hitChargeVector)
         hitChargeVector.pop_back();
 
     //This piece of logic removes hits that have uncharacteristically high or low Q/w values (in tails of Q/w distribution)
+    /*
     hitChargeVector.erase(
     std::remove_if(hitChargeVector.begin(), hitChargeVector.end(),
         [](HitCharge & hitCharge) { return hitCharge.m_intails; }),
     hitChargeVector.end());
+    */
 
     //Get track length and Q over W span for last step
     float trackLength(0.f), minQoverW(1e6), maxQoverW(0.f);
@@ -663,6 +669,29 @@ void TrackDirectionTool::TrackEndFilter(HitChargeVector &hitChargeVector, Direct
     {
         hitChargeVector = filteredHitChargeVector;
     }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+
+void TrackDirectionTool::Regularise(HitChargeVector &hitChargeVector, HitChargeVector &filteredHitChargeVector)
+{
+    std::sort(hitChargeVector.begin(), hitChargeVector.end(), SortHitChargeVectorByChargeOverWidth);
+
+    int numberHitsToRemove(std::min(3, static_cast<int>((hitChargeVector.size()/2 - 1))));
+    float chargeLowerBound(hitChargeVector.at((numberHitsToRemove - 1)).GetChargeOverWidth()), chargeUpperBound(hitChargeVector.at(hitChargeVector.size() - (numberHitsToRemove + 1)).GetChargeOverWidth());
+
+    std::sort(hitChargeVector.begin(), hitChargeVector.end(), SortHitChargeVectorByRL);
+
+    for (const auto &hitCharge : hitChargeVector)
+    {
+        if (hitCharge.GetChargeOverWidth() == hitChargeVector.front().GetChargeOverWidth() || hitCharge.GetChargeOverWidth() == hitChargeVector.back().GetChargeOverWidth())
+            continue;
+
+        if (hitCharge.GetChargeOverWidth() > chargeLowerBound && hitCharge.GetChargeOverWidth() < chargeUpperBound)
+            filteredHitChargeVector.push_back(hitCharge);
+    }
+
+    std::sort(filteredHitChargeVector.begin(), filteredHitChargeVector.end(), SortHitChargeVectorByRL);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -1558,6 +1587,9 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     //---------------------------------------------------------------------------------------------------
     //Forwards Fit
 
+    //for (const auto &hitCharge : hitChargeVector)
+    //    std::cout << hitCharge.GetChargeOverWidth() << std::endl;
+
     double maxScale(globalLookupTable.GetMaxRange()/globalTrackLength);
     double particleMass(globalLookupTable.GetMass());
 
@@ -1566,9 +1598,9 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     const int nParameters = 3;
     const std::string parName[nParameters]   = {"ENDENERGY", "SCALE", "FUDGE"};
     const double vstart[nParameters] = {11.0, 1.01, 1.0};
-    const double step[nParameters] = {0.0001, 0.0001, 0.0001};
-    const double lowphysbound[nParameters] = {10.0, 1.0, 0.95};
-    const double highphysbound[nParameters] = {266.0, maxScale, 1.05};
+    const double step[nParameters] = {0.001, 0.001, 0.001};
+    const double lowphysbound[nParameters] = {5.0, 0.5, 0.8};
+    const double highphysbound[nParameters] = {266.0, maxScale, 1.2};
 
     int ierflg(0);
 
@@ -1597,9 +1629,9 @@ void TrackDirectionTool::PerformFits(HitChargeVector &hitChargeVector, HitCharge
     const int nParameters2 = 4;
     const std::string parName2[nParameters2]   = {"ENDENERGY", "SCALE", "FUDGE"};
     const double vstart2[nParameters2] = {11.0, 1.01, 1.0};
-    const double step2[nParameters2] = {0.0001, 0.0001, 0.0001};
-    const double lowphysbound2[nParameters2] = {10.0, 1.0, 0.95};
-    const double highphysbound2[nParameters2] = {266.0, maxScale, 1.05};
+    const double step2[nParameters2] = {0.001, 0.001, 0.001};
+    const double lowphysbound2[nParameters2] = {5.0, 0.5, 0.8};
+    const double highphysbound2[nParameters2] = {266.0, maxScale, 1.2};
 
     int ierflg2(0);
 
@@ -1734,11 +1766,34 @@ void TrackDirectionTool::GetCalorimetricDirection(const Cluster* pTargetClusterW
     HitChargeVector hitChargeVector;
     this->FillHitChargeVector(pTargetClusterW, hitChargeVector);
 
+    if (hitChargeVector.size() < m_minClusterCaloHits)
+    {
+        std::cout << "Direction fit error: invalid cluster" << std::endl;
+        throw STATUS_CODE_FAILURE;
+    }
+
     HitChargeVector filteredHitChargeVector;
     this->TrackInnerFilter(hitChargeVector, filteredHitChargeVector);
 
+    if (filteredHitChargeVector.size() < m_minClusterCaloHits)
+    {
+        std::cout << "Direction fit error: invalid cluster" << std::endl;
+        throw STATUS_CODE_FAILURE;
+    }
+
     this->SimpleTrackEndFilter(filteredHitChargeVector);
     this->TrackEndFilter(filteredHitChargeVector, directionFitObject);
+
+    /*
+    HitChargeVector regularisedHitChargeVector;
+    this->Regularise(filteredHitChargeVector, regularisedHitChargeVector);
+
+    if (regularisedHitChargeVector.size() < m_minClusterCaloHits)
+    {
+        std::cout << "Direction fit error: invalid cluster" << std::endl;
+        throw STATUS_CODE_FAILURE;
+    }
+    */
 
     this->FitHitChargeVector(filteredHitChargeVector, directionFitObject);
 
