@@ -279,6 +279,8 @@ private:
 
     bool IsContained(const pandora::ParticleFlowObject *const pPfo) const;
 
+    bool EndpointsContained(const pandora::ParticleFlowObject *const pPfo) const;
+
     bool IsContained(const pandora::MCParticle* const pMCParticle) const;
 
     bool IsInFiducialVolume(pandora::CartesianVector positionVector) const;

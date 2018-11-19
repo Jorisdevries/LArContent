@@ -108,7 +108,7 @@ void LArSpaceChargeHelper::Configure(std::string fileName)
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-CartesianVector LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(CartesianVector &positionVector)
+CartesianVector LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(CartesianVector positionVector)
 {
     return positionVector - GetPositionOffset(positionVector);
 }

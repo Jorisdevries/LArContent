@@ -22,7 +22,7 @@ namespace lar_content
     public:
 
         static void Configure(std::string fileName);
-        static pandora::CartesianVector GetSpaceChargeCorrectedPosition(pandora::CartesianVector &inputPoistion);
+        static pandora::CartesianVector GetSpaceChargeCorrectedPosition(pandora::CartesianVector inputPoistion);
         static pandora::CartesianVector GetPositionOffset(pandora::CartesianVector &positionOffset);
 
     protected:
