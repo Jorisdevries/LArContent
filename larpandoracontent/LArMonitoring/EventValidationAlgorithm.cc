@@ -1281,6 +1281,40 @@ void EventValidationAlgorithm::WriteVariables(const pandora::PfoList* pPfoList) 
 
     if (neutrinoPfos.size() != 1) return;
 
+    //Write containment definitions
+    this->WriteContainmentDefinitions(neutrinoPfos, connectedPfos);
+
+    //Get primary nu reco daughters
+    pandora::PfoList recoNeutrinoPrimaryDaughters(this->GetPrimaryDaughters(neutrinoPfos));
+
+    //Event variables
+    this->WriteEventVariables(recoNeutrinoPrimaryDaughters);
+
+    //Get shortest and longest PFO
+    const pandora::ParticleFlowObject* pLongestPfo(GetLongestPfo(recoNeutrinoPrimaryDaughters));
+    const pandora::ParticleFlowObject* pShortestPfo(GetShortestPfo(recoNeutrinoPrimaryDaughters));
+
+    //Topological variables
+    this->WriteTopologicalVariables(pLongestPfo, "LongestPfo");
+    this->WriteTopologicalVariables(pShortestPfo, "ShortestPfo");
+
+    //Direction fit variables 
+    this->WriteDirectionFitVariables(pLongestPfo, "LongestPfo");
+    this->WriteDirectionFitVariables(pShortestPfo, "ShortestPfo");
+
+    //PID variables
+    this->WritePIDVariables(pLongestPfo, "LongestPfo");
+    this->WritePIDVariables(pShortestPfo, "ShortestPfo");
+
+    //Cosmic variables
+    this->WriteCosmicVariables(pLongestPfo, "LongestPfo");
+    this->WriteCosmicVariables(pShortestPfo, "ShortestPfo");
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventValidationAlgorithm::WriteContainmentDefinitions(PfoList &neutrinoPfos, PfoList &connectedPfos) const
+{
     //Check if nu reco contained
     float containedHits(0.f), uncontainedHits(0.f);
 
@@ -1297,14 +1331,9 @@ void EventValidationAlgorithm::WriteVariables(const pandora::PfoList* pPfoList) 
             containedHits += 1.0;
     }
 
-    std::cout << "containedHits: " << containedHits << std::endl;
-    std::cout << "uncontainedHits: " << uncontainedHits << std::endl;
-
     float containmentFraction(containedHits/(containedHits + uncontainedHits));
 
     bool everyPfoEndpointContained(true);
-
-    std::cout << "connectedPfos.size(): " << connectedPfos.size() << std::endl;
 
     for (const auto pPfo : connectedPfos)
     {
@@ -1332,42 +1361,76 @@ void EventValidationAlgorithm::WriteVariables(const pandora::PfoList* pPfoList) 
 
     //std::cout << "correctedRecoNeutrinoVertexPosition : (" << correctedRecoNeutrinoVertexPosition.GetX() << ", " << correctedRecoNeutrinoVertexPosition.GetY() << ", " << correctedRecoNeutrinoVertexPosition.GetZ() << ")" << std::endl;
 
+    std::cout << "NuReco hits: " << containedHits + uncontainedHits << std::endl;
     std::cout << "containmentFraction: " << containmentFraction << std::endl;
-    std::cout << "everyPfoEndpointContained: " << everyPfoEndpointContained << std::endl;
-    std::cout << "everyPfoSlidingFitEndpointContained: " << everyPfoSlidingFitEndpointContained << std::endl;
-    std::cout << "recoNeutrinoVertexContained: " << recoNeutrinoVertexContained << std::endl;
+    //std::cout << "everyPfoEndpointContained: " << everyPfoEndpointContained << std::endl;
+    //std::cout << "everyPfoSlidingFitEndpointContained: " << everyPfoSlidingFitEndpointContained << std::endl;
+    //std::cout << "recoNeutrinoVertexContained: " << recoNeutrinoVertexContained << std::endl;
 
+    //MC equivalent definitions
+    const MCParticleList *pMCParticleList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
+
+    const PfoList *pPfoList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_pfoListName, pPfoList));
+
+    const CaloHitList *pCaloHitList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_caloHitListName, pCaloHitList));
+
+    LArMCParticleHelper::MCRelationMap mcPrimaryMap;
+    LArMCParticleHelper::GetMCPrimaryMap(pMCParticleList, mcPrimaryMap);
+
+    LArMCParticleHelper::CaloHitToMCMap hitToMCMap;
+    LArMCParticleHelper::MCContributionMap mcToTrueHitListMap; 
+    LArMCParticleHelper::GetMCParticleToCaloHitMatches(pCaloHitList, mcPrimaryMap, hitToMCMap, mcToTrueHitListMap);
+
+    pandora::MCParticleVector trueNeutrinos;
+    LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
+
+    const pandora::CartesianVector trueNeutrinoVertexPosition(trueNeutrinos.front()->GetVertex());
+    bool trueNeutrinoVertexContained(this->IsInFiducialVolume(trueNeutrinoVertexPosition));
+    bool bothTrueNeutrinoEndpointsContained(this->IsInFiducialVolume(trueNeutrinos.front()->GetVertex()) && this->IsInFiducialVolume(trueNeutrinos.front()->GetEndpoint()) ? true : false);
+
+    int trueNeutrinoHits(0), trueNeutrinoContainedHits(0);
+
+    pandora::CaloHitList allPfoHits;
+    LArPfoHelper::GetCaloHits(*pPfoList, TPC_3D, allPfoHits);
+
+    for (const auto pCaloHit : allPfoHits)
+    {
+        const pandora::CaloHit* pParentCaloHit(static_cast<const CaloHit*>(pCaloHit->GetParentAddress()));
+
+        if (hitToMCMap.find(pParentCaloHit) != hitToMCMap.end())
+        {
+            if (!LArMCParticleHelper::IsBeamNeutrinoFinalState(hitToMCMap.at(pParentCaloHit)))
+                continue;
+
+            ++trueNeutrinoHits;
+
+            CartesianVector correctedPosition(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(pCaloHit->GetPositionVector()));
+
+            if (this->IsInFiducialVolume(correctedPosition))
+                ++trueNeutrinoContainedHits;
+        }
+    }
+
+    float trueNeutrinoContainmentFraction(static_cast<float>(trueNeutrinoContainedHits)/(trueNeutrinoHits));
+
+    std::cout << "trueNeutrinoHits: " << trueNeutrinoHits << std::endl;
+    //std::cout << "trueNeutrinoContainedHits: " << trueNeutrinoContainedHits << std::endl;
+    std::cout << "trueNeutrinoContainmentFraction: " << trueNeutrinoContainmentFraction << std::endl;
+    //std::cout << "bothTrueNeutrinoEndpointsContained: " << bothTrueNeutrinoEndpointsContained << std::endl;
+    //std::cout << "trueNeutrinoVertexContained: " << trueNeutrinoVertexContained << std::endl;
+
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuTrueContained", trueNeutrinoContainmentFraction > 0.82 ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuTrueContainmentFraction", trueNeutrinoContainmentFraction));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuTrueEndpointsContained", bothTrueNeutrinoEndpointsContained ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuTrueVertexContained", trueNeutrinoVertexContained ? 1 : 0));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuRecoContained", containmentFraction > 0.82 ? 1 : 0));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuRecoContainmentFraction", containmentFraction));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuRecoEndpointsContained", everyPfoEndpointContained ? 1 : 0));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuRecoSlidingFitEndpointsContained", everyPfoSlidingFitEndpointContained ? 1 : 0));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuRecoVertexContained", recoNeutrinoVertexContained ? 1 : 0));
-
-    //Get primary nu reco daughters
-    pandora::PfoList recoNeutrinoPrimaryDaughters(this->GetPrimaryDaughters(neutrinoPfos));
-
-    //Event variables
-    this->WriteEventVariables(recoNeutrinoPrimaryDaughters);
-
-    //Get shortest and longest PFO
-    const pandora::ParticleFlowObject* pLongestPfo(GetLongestPfo(recoNeutrinoPrimaryDaughters));
-    const pandora::ParticleFlowObject* pShortestPfo(GetShortestPfo(recoNeutrinoPrimaryDaughters));
-
-    //Topological variables
-    this->WriteTopologicalVariables(pLongestPfo, "LongestPfo");
-    this->WriteTopologicalVariables(pShortestPfo, "ShortestPfo");
-
-    //Direction fit variables 
-    this->WriteDirectionFitVariables(pLongestPfo, "LongestPfo");
-    this->WriteDirectionFitVariables(pShortestPfo, "ShortestPfo");
-
-    //PID variables
-    this->WritePIDVariables(pLongestPfo, "LongestPfo");
-    this->WritePIDVariables(pShortestPfo, "ShortestPfo");
-
-    //Cosmic variables
-    this->WriteCosmicVariables(pLongestPfo, "LongestPfo");
-    this->WriteCosmicVariables(pShortestPfo, "ShortestPfo");
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -1734,7 +1797,6 @@ void EventValidationAlgorithm::WriteCosmicVariables(const ParticleFlowObject *co
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "RecoIntersectsYFace", -1));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MCLowestTenCmTotalCharge", -1.f));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "RecoLowestTenCmTotalCharge", -1.f));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FilteredLowestTenCmTotalCharge", -1.f));
         return;
     }
 

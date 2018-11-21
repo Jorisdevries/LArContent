@@ -271,6 +271,8 @@ private:
 
     void WriteVariables(const pandora::PfoList* pPfoList) const;
 
+    void WriteContainmentDefinitions(pandora::PfoList &neutrinoPfos, pandora::PfoList &connectedPfos) const;
+
     void WriteEventVariables(pandora::PfoList &recoNeutrinoPrimaryDaughters) const;
 
     void WriteTopologicalVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
