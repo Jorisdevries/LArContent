@@ -244,6 +244,7 @@ void NeutrinoIdTool::SelectPfosByProbability(const SliceHypotheses &nuSliceHypot
         if (nNuSlices < m_maxNeutrinos)
         {
             this->SelectPfos(nuSliceHypotheses.at(slice.first), selectedPfos);
+
             nNuSlices++;
             continue;
         }

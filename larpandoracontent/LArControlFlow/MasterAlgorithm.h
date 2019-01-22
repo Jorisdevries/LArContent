@@ -12,6 +12,7 @@
 #include "Pandora/ExternallyConfiguredAlgorithm.h"
 
 #include "larpandoracontent/LArControlFlow/MultiPandoraApi.h"
+#include "larpandoracontent/LArDirection/TrackDirectionTool.h"
 
 #include <unordered_map>
 
@@ -42,6 +43,11 @@ public:
     MasterAlgorithm();
 
     /**
+     *  @brief  Default destructor
+     */
+    ~MasterAlgorithm();
+
+    /**
      *  @brief  External steering parameters class
      */
     class ExternalSteeringParameters : public pandora::ExternalParameters
@@ -50,6 +56,7 @@ public:
         pandora::InputBool      m_shouldRunAllHitsCosmicReco;       ///< Whether to run all hits cosmic-ray reconstruction
         pandora::InputBool      m_shouldRunStitching;               ///< Whether to stitch cosmic-ray muons crossing between volumes
         pandora::InputBool      m_shouldRunCosmicHitRemoval;        ///< Whether to remove hits from tagged cosmic-rays
+        pandora::InputBool      m_cheatTopFaceCosmicRemoval;        ///< Whether to remove hits from tagged cosmic-rays
         pandora::InputBool      m_shouldRunSlicing;                 ///< Whether to slice events into separate regions for processing
         pandora::InputBool      m_shouldRunNeutrinoRecoOption;      ///< Whether to run neutrino reconstruction for each slice
         pandora::InputBool      m_shouldRunCosmicRecoOption;        ///< Whether to run cosmic-ray reconstruction for each slice
@@ -136,6 +143,20 @@ private:
      *  @param  ambiguousPfos to receive the list of ambiguous cosmic-ray pfos for further analysis
      */
     pandora::StatusCode TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosToX0Map, pandora::PfoList &clearCosmicRayPfos, pandora::PfoList &ambiguousPfos) const;
+
+    float GetAngleWithVector(const pandora::ParticleFlowObject* pPfo, pandora::CartesianVector &axisVector) const;
+
+    bool IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult) const;
+
+    bool HasFiducialLowY(TrackDirectionTool::DirectionFitObject &fitResult) const;
+
+    bool HasHighTopY(TrackDirectionTool::DirectionFitObject &fitResult, float threshold) const;
+
+    float CalculateCosmicProbability(TrackDirectionTool::DirectionFitObject &directionFit) const;
+
+    bool IsStoppingTopFaceMCParticle(const pandora::MCParticle* pMCParticle) const;
+
+    bool IsInFiducialVolume(pandora::CartesianVector positionVector) const;
 
     /**
      *  @brief  Run cosmic-ray hit removal, freeing hits in ambiguous pfos for further processing
@@ -293,6 +314,8 @@ private:
     bool                        m_shouldRunAllHitsCosmicReco;       ///< Whether to run all hits cosmic-ray reconstruction
     bool                        m_shouldRunStitching;               ///< Whether to stitch cosmic-ray muons crossing between volumes
     bool                        m_shouldRunCosmicHitRemoval;        ///< Whether to remove hits from tagged cosmic-rays
+    bool                        m_cheatTopFaceCosmicRemoval;        ///< 
+    bool                        m_recoTopFaceCosmicRemoval;         ///< 
     bool                        m_shouldRunSlicing;                 ///< Whether to slice events into separate regions for processing
     bool                        m_shouldRunNeutrinoRecoOption;      ///< Whether to run neutrino reconstruction for each slice
     bool                        m_shouldRunCosmicRecoOption;        ///< Whether to run cosmic-ray reconstruction for each slice
@@ -328,6 +351,16 @@ private:
     std::string                 m_recreatedVertexListName;          ///< The output recreated vertex list name
 
     float                       m_inTimeMaxX0;                      ///< Cut on X0 to determine whether particle is clear cosmic ray
+
+    //Track direction
+    std::string                 m_treeName;                     ///< Name of output tree
+    std::string                 m_fileName;                     ///< Name of output file
+
+    int                         m_fileIdentifier;               ///< The input file identifier
+    int                         m_eventNumber;                  ///< The event number
+
+    TrackDirectionTool          *m_pTrackDirectionTool;
+    bool                        m_writeToTree;
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------

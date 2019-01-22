@@ -15,6 +15,7 @@
 #include "larpandoracontent/LArHelpers/LArGeometryHelper.h"
 #include "larpandoracontent/LArHelpers/LArMvaHelper.h"
 #include "larpandoracontent/LArHelpers/LArFileHelper.h"
+#include "larpandoracontent/LArHelpers/LArDirectionHelper.h"
 
 #include "larpandoracontent/LArMonitoring/EventValidationAlgorithm.h"
 #include "larpandoracontent/LArTrackShowerId/SvmPfoCharacterisationAlgorithm.h"
@@ -44,6 +45,8 @@ EventValidationAlgorithm::EventValidationAlgorithm() :
     m_matchingMinPurity(0.5f),
     m_slidingFitWindow(20),
     m_viewEvent(false),
+    m_eventSelection(false),
+    m_writeNeutrinoIdCheck(false),
     m_fileIdentifier(0),
     m_eventNumber(0)
 {
@@ -168,9 +171,22 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
     MCParticleVector mcPrimaryVector;
     LArMonitoringHelper::GetOrderedMCParticleVector({validationInfo.GetTargetMCParticleToHitsMap()}, mcPrimaryVector);
 
-    int nNeutrinoPrimaries(0);
+    int nNeutrinoPrimaries(0); //number of reconstructable primaries
     for (const MCParticle *const pMCPrimary : mcPrimaryVector)
         if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary) && validationInfo.GetTargetMCParticleToHitsMap().count(pMCPrimary)) ++nNeutrinoPrimaries;
+
+    const MCParticleList *pMCParticleList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
+
+    int nAllNeutrinoPrimaries(0); //all neutrino primaries
+    for (const MCParticle *const pMCParticle : *pMCParticleList)
+    {
+        if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCParticle)) 
+        {
+            std::cout << "Neutrino-induced primary particle with PDG: " << pMCParticle->GetParticleId() << ", Reconstructable: " << validationInfo.GetTargetMCParticleToHitsMap().count(pMCParticle) << std::endl;
+            ++nAllNeutrinoPrimaries;
+        }
+    }
 
     PfoVector primaryPfoVector;
     LArMonitoringHelper::GetOrderedPfoVector(validationInfo.GetPfoToHitsMap(), primaryPfoVector);
@@ -207,7 +223,16 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
     //NEW CODE
     int nNuParticleMatches(0), nRecoNuGoodParticleMatches(0), nRecoNuParticleMatches(0), nMuonParticleMatches(0), nProtonParticleMatches(0);
     int nNuTrackMatches(0), nRecoNuTrackMatches(0), nMuonTrackMatches(0), nProtonTrackMatches(0);
+
+    //Sets default to either no_neutrino_interaction or no_reconstructable
     int interactionTypeCopy(167), modifiedInteractionTypeCopy(167), nuanceCodeCopy(-1);
+
+    if (nAllNeutrinoPrimaries != 0 && nNeutrinoPrimaries == 0) 
+    {
+        interactionTypeCopy = 166;
+        modifiedInteractionTypeCopy = 166;
+    }
+
     int nRecoNuSplits(-1);
     int nMuons(0), nProtons(0), nNeutrons(0), nPhotons(0), nPiPlus(0), nPiMinus(0), nPiZero(0), nElectrons(0), nOther(0);
     int nPrimaries(0);
@@ -496,6 +521,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
                 if (nRecoNuCosmicRays == nRecoNuParticleMatches)
                     modifiedInteractionTypeInt = 165; //custom CR interaction type
 
+                /*
                 const MCParticleList *pMCParticleList(nullptr);
                 PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
 
@@ -511,6 +537,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
 
                 if (mcPrimaryList.size() == 0 && nRecoNuCosmicRays < nRecoNuParticleMatches)
                     modifiedInteractionTypeInt = 166; //often there will be no reconstructable particles left in nu reco due to mistagging, but if a non-CR particle is selected and there are no reconstructable MC particles in the event this constitutes a different class of event: this is a custom interaction type for this case
+                */
 
                 interactionTypeCopy = interactionTypeInt;
                 modifiedInteractionTypeCopy = modifiedInteractionTypeInt;
@@ -585,24 +612,24 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
         }
     }
 
-    if (fillTree)
+    //NEW CODE
+
+    const MCParticleList *pMCParticleListDuplicate(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleListDuplicate));
+
+    const CaloHitList *pCaloHitListDuplicate(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_caloHitListName, pCaloHitListDuplicate));
+
+    const PfoList *pPfoListDuplicate(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_pfoListName, pPfoListDuplicate));
+
+    if (fillTree && m_writeNeutrinoIdCheck)
+        this->WriteNeutrinoIdCheck(pMCParticleListDuplicate, pPfoListDuplicate, pCaloHitListDuplicate);
+
+    if (fillTree && m_eventSelection)
     {
-        //NEW CODE
-        const MCParticleList *pMCParticleList(nullptr);
-        PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_mcParticleListName, pMCParticleList));
-
-        const CaloHitList *pCaloHitList(nullptr);
-        PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_caloHitListName, pCaloHitList));
-
-        const PfoList *pPfoList(nullptr);
-        PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_pfoListName, pPfoList));
-
-        this->WriteEventDescription(pMCParticleList, pPfoList, pCaloHitList);
-        this->WriteVariables(pPfoList);
-
-        std::cout << "nRecoNuCosmicRays: " << nRecoNuCosmicRays << std::endl;
-        std::cout << "nRecoNuParticleMatches: " << nRecoNuParticleMatches << std::endl;
-        std::cout << "modifiedInteractionTypeCopy: " << modifiedInteractionTypeCopy << std::endl;
+        this->WriteEventDescription(pMCParticleListDuplicate, pPfoListDuplicate, pCaloHitListDuplicate);
+        this->WriteVariables(pPfoListDuplicate);
 
         int signal(((nPrimaries == 1 && nMuons == 1 && nRecoNuParticleMatches == 1 && nRecoNuCosmicRays == 0) || (nPrimaries == 2 && nMuons == 1 && nProtons == 1 && nRecoNuParticleMatches == 2 && nRecoNuCosmicRays == 0 && nMuonParticleMatches == 1 && nProtonParticleMatches == 1)) ? 1 : 0);
 
@@ -800,6 +827,140 @@ bool EventValidationAlgorithm::IsGoodMatch(const CaloHitList &trueHits, const Ca
     return ((sharedHits.size() >= m_matchingMinSharedHits) && (purity >= m_matchingMinPurity) && (completeness >= m_matchingMinCompleteness));
 }
 
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void EventValidationAlgorithm::WriteNeutrinoIdCheck(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, const pandora::CaloHitList* pCaloHitList) const
+{
+    PfoList neutrinoPfos;
+    LArPfoHelper::GetRecoNeutrinos(pPfoList, neutrinoPfos);
+
+    bool eventContainsTargetPfo(false), eventContainsTrueTargetCR(false);
+    bool nuRecoIsTargetPfo(false), nuRecoIsTrueTargetCR(false), nuRecoTrueCosmicRay(false), nuRecoIntersectsTopFace(false), nuRecoFiducialLowY(false), nuRecoHighTopY(false);
+    float nuRecoDeltaChiSquared(0.f), nuRecoCosmicProbability(0.f), nuRecoPolarAngle(0.f);
+
+    for (const Pfo *const pPfo : *pPfoList)
+    {
+        if (!pPfo->GetParentPfoList().empty())
+            continue;
+
+        try
+        {
+            const auto pMCParticle(LArMCParticleHelper::GetMainMCParticle(pPfo));
+            const bool isTrueCosmicRay(LArMCParticleHelper::IsCosmicRay(pMCParticle));
+            const bool isTargetCosmic(isTrueCosmicRay && LArDirectionHelper::IsStoppingTopFaceMCParticle(pMCParticle));
+
+            CartesianVector yAxis(0.f, 1.f, 0.f);
+            float pfoPolarAngle(LArDirectionHelper::GetAngleWithVector(this->GetPandora(), pPfo, yAxis));
+
+            TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetPfoDirection(pPfo);
+            float pfoCosmicProbability = LArDirectionHelper::CalculateCosmicProbability(directionFit);
+            float deltaChiSquaredUpDownPerHit(directionFit.GetUpDownDeltaChiSquaredPerHit());
+
+            bool pfoIntersectsTopFace(LArDirectionHelper::IntersectsYFace(directionFit)), pfoFiducialLowY(LArDirectionHelper::HasFiducialLowY(directionFit)), pfoHighTopY(LArDirectionHelper::HasHighTopY(directionFit, 100.0));
+            bool isTargetTopFacePfo(pfoHighTopY && pfoIntersectsTopFace && pfoFiducialLowY);
+
+            if (isTargetTopFacePfo)
+                eventContainsTargetPfo = true;
+
+            if (isTargetCosmic)
+                eventContainsTrueTargetCR = true;
+
+            if (std::find(neutrinoPfos.begin(), neutrinoPfos.end(), pPfo) != neutrinoPfos.end())
+            {
+                std::cout << "FOUND NU RECO" << std::endl;
+
+                nuRecoTrueCosmicRay = isTrueCosmicRay;
+                nuRecoIntersectsTopFace = pfoIntersectsTopFace;
+                nuRecoFiducialLowY = pfoFiducialLowY;
+                nuRecoHighTopY = pfoHighTopY;
+                nuRecoPolarAngle = pfoPolarAngle;
+
+                nuRecoDeltaChiSquared = deltaChiSquaredUpDownPerHit;
+                nuRecoCosmicProbability = pfoCosmicProbability;
+
+                nuRecoIsTargetPfo = isTargetTopFacePfo;
+                nuRecoIsTrueTargetCR = isTargetCosmic;
+            }
+
+            std::cout << "No exception 2" << std::endl;
+        }
+        catch (...)
+        {
+            std::cout << "Exception 2" << std::endl;
+            //continue;
+        }
+    }
+
+    //-------------------------
+
+
+    LArMCParticleHelper::MCRelationMap mcPrimaryMap;
+    LArMCParticleHelper::GetMCPrimaryMap(pMCParticleList, mcPrimaryMap);
+
+    LArMCParticleHelper::CaloHitToMCMap hitToMCMap;
+    LArMCParticleHelper::MCContributionMap mcToTrueHitListMap; 
+    LArMCParticleHelper::GetMCParticleToCaloHitMatches(pCaloHitList, mcPrimaryMap, hitToMCMap, mcToTrueHitListMap);
+
+    //Front PFO in selectedSlicePfos is NuReco (assuming max number neutrinos is 1)
+    pandora::CaloHitList nuRecoPfoHits;
+    LArPfoHelper::GetCaloHits(neutrinoPfos.front(), TPC_3D, nuRecoPfoHits);
+
+    int nNeutrinoInducedHits(1), nTotalHits(1);
+
+    for (const auto pCaloHit : nuRecoPfoHits)
+    {
+        const pandora::CaloHit* pParentCaloHit(static_cast<const CaloHit*>(pCaloHit->GetParentAddress()));
+
+        ++nTotalHits;
+
+        if (hitToMCMap.find(pParentCaloHit) != hitToMCMap.end())
+        {
+            if (LArMCParticleHelper::IsBeamNeutrinoFinalState(hitToMCMap.at(pParentCaloHit)))
+                ++nNeutrinoInducedHits;
+        }
+    }
+
+    float neutrinoHitPurityFraction(static_cast<float>(nNeutrinoInducedHits)/nTotalHits);
+
+    //-------------------------
+
+    int interactionTypeInt(-1);
+
+    try
+    {
+        LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap;
+        LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, LArMCParticleHelper::PrimaryParameters(),
+            LArMCParticleHelper::IsBeamNeutrinoFinalState, nuMCParticlesToGoodHitsMap);
+
+        MCParticleList mcPrimaryList;
+        for (const auto &mapEntry : nuMCParticlesToGoodHitsMap) mcPrimaryList.push_back(mapEntry.first);
+        mcPrimaryList.sort(LArMCParticleHelper::SortByMomentum);
+
+        const LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(mcPrimaryList));
+        interactionTypeInt = interactionType;
+    }
+    catch (...)
+    {
+    }
+
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "EventContainsTargetPfo", eventContainsTargetPfo ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "EventContainsTrueTargetCR", eventContainsTrueTargetCR ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoIsTargetPfo", nuRecoIsTargetPfo ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoIsTrueTargetCR", nuRecoIsTrueTargetCR? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoTrueCosmicRay", nuRecoTrueCosmicRay ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoIntersectsTopFace", nuRecoIntersectsTopFace ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoFiducialLowY", nuRecoFiducialLowY ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoHighTopY", nuRecoHighTopY ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoPolarAngle", nuRecoPolarAngle));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoHitPurityFraction", neutrinoHitPurityFraction));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoDeltaChiSquared", nuRecoDeltaChiSquared));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoCosmicProbability", nuRecoCosmicProbability));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NeutrinoIdCorrect", neutrinoHitPurityFraction > 0.9 ? 1 : 0));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "TrueInteractionType", interactionTypeInt));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "FileIdentifier", m_fileIdentifier));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "EventNumber", m_eventNumber));
+    PANDORA_MONITORING_API(FillTree(this->GetPandora(), "NeutrinoIdCheck"));
+}
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 void EventValidationAlgorithm::WriteEventDescription(const pandora::MCParticleList *pMCParticleList, const pandora::PfoList* pPfoList, const pandora::CaloHitList* pCaloHitList) const
@@ -1396,6 +1557,24 @@ void EventValidationAlgorithm::WriteContainmentDefinitions(PfoList &neutrinoPfos
     pandora::CaloHitList allPfoHits;
     LArPfoHelper::GetCaloHits(*pPfoList, TPC_3D, allPfoHits);
 
+    LArMCParticleHelper::PrimaryParameters parameters;
+    parameters.m_selectInputHits = m_selectInputHits;
+    parameters.m_minHitSharingFraction = m_minHitSharingFraction;
+    parameters.m_maxPhotonPropagation = m_maxPhotonPropagation;
+    LArMCParticleHelper::MCContributionMap targetMCParticleToHitsMap;
+    LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, parameters, LArMCParticleHelper::IsBeamNeutrinoFinalState, targetMCParticleToHitsMap);
+
+    for (const auto pMCParticle : *pMCParticleList)
+    {
+        if (targetMCParticleToHitsMap.find(pMCParticle) != targetMCParticleToHitsMap.end())
+        {
+            int nMCHits(targetMCParticleToHitsMap.at(pMCParticle).size());
+            trueNeutrinoHits += nMCHits;
+            trueNeutrinoContainedHits += this->GetMCContainmentFraction(pMCParticle, 100) * nMCHits;
+        }
+    }
+
+    /*
     for (const auto pCaloHit : allPfoHits)
     {
         const pandora::CaloHit* pParentCaloHit(static_cast<const CaloHit*>(pCaloHit->GetParentAddress()));
@@ -1413,6 +1592,7 @@ void EventValidationAlgorithm::WriteContainmentDefinitions(PfoList &neutrinoPfos
                 ++trueNeutrinoContainedHits;
         }
     }
+    */
 
     float trueNeutrinoContainmentFraction(static_cast<float>(trueNeutrinoContainedHits)/(trueNeutrinoHits));
 
@@ -1431,6 +1611,34 @@ void EventValidationAlgorithm::WriteContainmentDefinitions(PfoList &neutrinoPfos
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuRecoEndpointsContained", everyPfoEndpointContained ? 1 : 0));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuRecoSlidingFitEndpointsContained", everyPfoSlidingFitEndpointContained ? 1 : 0));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NuRecoVertexContained", recoNeutrinoVertexContained ? 1 : 0));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float EventValidationAlgorithm::GetMCContainmentFraction(const pandora::MCParticle* pMCParticle, int nSamplingPoints) const
+{
+    int nContainedSamplingPoints(0);
+
+    const pandora::CartesianVector initialPosition(pMCParticle->GetVertex());
+    const pandora::CartesianVector endPosition(pMCParticle->GetEndpoint());
+
+    const pandora::CartesianVector lowZVector(initialPosition.GetZ() < endPosition.GetZ() ? initialPosition : endPosition);
+    const pandora::CartesianVector highZVector(initialPosition.GetZ() > endPosition.GetZ() ? initialPosition : endPosition);
+
+    const float xStep((highZVector.GetX() - lowZVector.GetX())/(nSamplingPoints - 1));
+    const float yStep((highZVector.GetY() - lowZVector.GetY())/(nSamplingPoints - 1));
+    const float zStep((highZVector.GetZ() - lowZVector.GetZ())/(nSamplingPoints - 1));
+
+    for (int i = 0; i < nSamplingPoints; ++i)
+    {
+        CartesianVector positionShift(i * xStep, i * yStep, i * zStep);
+        CartesianVector currentPosition(lowZVector + positionShift);
+
+        if (this->IsInFiducialVolume(currentPosition))
+            ++nContainedSamplingPoints;
+    }
+
+    return static_cast<float>(nContainedSamplingPoints)/nSamplingPoints;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -2042,7 +2250,7 @@ bool EventValidationAlgorithm::MCIntersectsYFace(const pandora::MCParticle* pMCP
     float yDistanceToTravel(116.5 - lowYVector.GetY());
     CartesianVector yFaceIntersection(lowYVector.GetX() + xSlope*yDistanceToTravel, 116.5, lowYVector.GetZ() + zSlope*yDistanceToTravel);
 
-    if (yFaceIntersection.GetX() > 0.0 && yFaceIntersection.GetX() < 256.35 && yFaceIntersection.GetZ() > 0.0 && yFaceIntersection.GetZ() < 1036.8)
+    if (highYVector.GetZ() > 116.5 && yFaceIntersection.GetX() > 0.0 && yFaceIntersection.GetX() < 256.35 && yFaceIntersection.GetZ() > 0.0 && yFaceIntersection.GetZ() < 1036.8)
         return true;
     else
         return false;
@@ -2123,7 +2331,9 @@ void EventValidationAlgorithm::WritePIDVariables(const ParticleFlowObject *const
     try
     {
         DirectionFittingThreeDTool::DirectionFitObject fitResult3D = m_pDirectionFittingThreeDTool->GetPfoDirection(pPfo);
-        //fitResult3D.DrawFit();
+
+        if (variableNamePrefix == "ShortestPfo")
+            fitResult3D.DrawFit();
 
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitSuccesful3D", 1));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitMass3D", fitResult3D.GetFitParameters().GetParameterOne()));
@@ -2135,12 +2345,13 @@ void EventValidationAlgorithm::WritePIDVariables(const ParticleFlowObject *const
     }
     catch (...)
     {
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitSuccesful3D", 0));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitMass3D", 0.f));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MCPDG3D", 0));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "Contained3D", 0));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinChiSquaredPerHit3D", 0.f));
-        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "NumberHits3D", 0));
+        std::cout << "3D fit failure" << std::endl;
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitSuccesful3D", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitMass3D", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MCPDG3D", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "Contained3D", -1));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "MinChiSquaredPerHit3D", -1.f));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "NumberHits3D", -1));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", variableNamePrefix + "FitStatus3D", -1));
     }
 
@@ -2518,6 +2729,12 @@ StatusCode EventValidationAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
     
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "ViewEvent", m_viewEvent));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "EventSelection", m_eventSelection));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "WriteNeutrinoIdCheck", m_writeNeutrinoIdCheck));
 
     if (m_writeToTree)
     {

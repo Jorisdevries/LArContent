@@ -233,13 +233,19 @@ void GetForwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, In
 
     for (lar_content::DirectionFittingThreeDTool::HitObject &hitObject : *pMinuitVector3D)
     {
-        double hitdEdx(hitObject.GetdEdx());
-        int binNumber(std::floor(hitObject.GetLongitudinalPosition()/globalLookupTable3D.GetBinWidth()));
-        double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+        try
+        {
+            double hitdEdx(hitObject.GetdEdx());
+            int binNumber(std::floor(hitObject.GetLongitudinalPosition()/globalLookupTable3D.GetBinWidth()));
+            double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
 
-        double hitUncertainty(1.0);
-
-        chiSquared += ((hitdEdx - fitdEdx) * (hitdEdx - fitdEdx) )/(hitUncertainty * hitUncertainty);
+            double hitUncertainty(1.0);
+            chiSquared += ((hitdEdx - fitdEdx) * (hitdEdx - fitdEdx) )/(hitUncertainty * hitUncertainty);
+        }
+        catch (...)
+        {
+            continue;
+        }
     }
 
     f = chiSquared;
@@ -258,13 +264,19 @@ void GetBackwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, I
 
     for (lar_content::DirectionFittingThreeDTool::HitObject &hitObject : *pMinuitVector3D)
     {
-        double hitdEdx(hitObject.GetdEdx());
-        int binNumber(std::floor((globalTrackLength3D - hitObject.GetLongitudinalPosition())/globalLookupTable3D.GetBinWidth()));
-        double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+        try
+        {
+            double hitdEdx(hitObject.GetdEdx());
+            int binNumber(std::floor((globalTrackLength3D - hitObject.GetLongitudinalPosition())/globalLookupTable3D.GetBinWidth()));
+            double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
 
-        double hitUncertainty(1.0);
-
-        chiSquared += ((hitdEdx - fitdEdx) * (hitdEdx - fitdEdx) )/(hitUncertainty * hitUncertainty);
+            double hitUncertainty(1.0);
+            chiSquared += ((hitdEdx - fitdEdx) * (hitdEdx - fitdEdx) )/(hitUncertainty * hitUncertainty);
+        }
+        catch (...)
+        {
+            continue;
+        }
     }
 
     f = chiSquared;

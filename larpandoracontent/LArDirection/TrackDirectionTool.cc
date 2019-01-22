@@ -70,7 +70,7 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
     {
         if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || LArClusterHelper::GetLength(pTargetClusterW) < m_minClusterLength)
         {
-            std::cout << "Direction fit error: invalid cluster" << std::endl;
+            //std::cout << "Direction fit error: invalid cluster" << std::endl;
             throw STATUS_CODE_FAILURE;
         }
 
@@ -137,7 +137,7 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
     {
         if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || LArClusterHelper::GetLength(pTargetClusterW) < m_minClusterLength)
         {
-            std::cout << "Direction fit error: invalid cluster" << std::endl;
+            //std::cout << "Direction fit error: invalid cluster" << std::endl;
             throw STATUS_CODE_FAILURE;
         }
 
@@ -1768,7 +1768,7 @@ void TrackDirectionTool::GetCalorimetricDirection(const Cluster* pTargetClusterW
 
     if (hitChargeVector.size() < m_minClusterCaloHits)
     {
-        std::cout << "Direction fit error: invalid cluster" << std::endl;
+        //std::cout << "Direction fit error: invalid cluster" << std::endl;
         throw STATUS_CODE_FAILURE;
     }
 
@@ -1777,7 +1777,7 @@ void TrackDirectionTool::GetCalorimetricDirection(const Cluster* pTargetClusterW
 
     if (filteredHitChargeVector.size() < m_minClusterCaloHits)
     {
-        std::cout << "Direction fit error: invalid cluster" << std::endl;
+        //std::cout << "Direction fit error: invalid cluster" << std::endl;
         throw STATUS_CODE_FAILURE;
     }
 

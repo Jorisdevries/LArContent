@@ -65,8 +65,11 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
 
         this->FillHitObjectVector(pPfo, hitObjectVector);
 
-        if (hitObjectVector.size() <= m_minClusterCaloHits)
+        if (hitObjectVector.size() <= m_minClusterCaloHits || std::abs(hitObjectVector.back().GetLongitudinalPosition() - hitObjectVector.front().GetLongitudinalPosition()) < m_minClusterLength)
+        {
+            std::cout << "Not enough hits or PFO too short." << std::endl;
             throw STATUS_CODE_NOT_FOUND;
+        }
 
         this->FilterHitObjectVector(hitObjectVector, filteredHitObjectVector);
         this->SelectEndpoint(filteredHitObjectVector, endpointHitObjectVector);
@@ -124,10 +127,6 @@ void DirectionFittingThreeDTool::FillHitObjectVector(const pandora::ParticleFlow
         if (!((hitWidth > 0.3 && hitWidth < 1.8) && (caloHitEnergy > 50.0 && caloHitEnergy < 600.0)))
             continue;
 
-        //caloHitEnergy *= 243.0;        //ADC to electron (gain)
-        //caloHitEnergy *= 23.6/1e6;     //Ionisation energy per electron in MeV
-        //caloHitEnergy /= 0.62;         //Recombination
-
         float rL(0.f);
         rL = slidingFit.GetLongitudinalDisplacement(caloHitPosition);
 
@@ -140,6 +139,9 @@ void DirectionFittingThreeDTool::FillHitObjectVector(const pandora::ParticleFlow
         dQdx *= GetYZCoordinateCorrection(caloHitPosition);
 
         float dEdx(this->CalculateModBoxdEdx(dQdx));
+    
+        if (dEdx < 0.f)
+            throw STATUS_CODE_NOT_FOUND; 
 
         HitObject hitObject(pCaloHit, rL, caloHitEnergy, hitWidth, segmentLength, dQdx, dEdx);
         hitObjectVector.push_back(hitObject);
@@ -337,7 +339,7 @@ void DirectionFittingThreeDTool::PerformFits(HitObjectVector &hitObjectVector, f
 
     pMinuitVector3D->clear();
     pMinuitVector3D->insert(pMinuitVector3D->begin(), hitObjectVector.begin(), hitObjectVector.end());
-    int fitStatus1, fitStatus2;
+    int fitStatus1(0), fitStatus2(0);
 
     //---------------------------------------------------------------------------------------------------
     //Forwards Fit
@@ -363,6 +365,7 @@ void DirectionFittingThreeDTool::PerformFits(HitObjectVector &hitObjectVector, f
     arglist[1] = 1;
     pMinuit->mnexcm("MIGRAD", arglist, 1, fitStatus1);
 
+    /*
     //Refit in case of fit failure
     int refitCounter1(0);
     while (fitStatus1 != 0 && refitCounter1 < 3)
@@ -375,6 +378,7 @@ void DirectionFittingThreeDTool::PerformFits(HitObjectVector &hitObjectVector, f
         pMinuit->mnexcm("MIGRAD", arglist, 1, fitStatus1);
         ++refitCounter1;
     }   
+    */
 
     double outpar[2], err[2];
 
@@ -406,6 +410,8 @@ void DirectionFittingThreeDTool::PerformFits(HitObjectVector &hitObjectVector, f
     arglist2[0] = 1000;
     arglist2[1] = 1;
     pMinuit2->mnexcm("MIGRAD", arglist2, 1, fitStatus2);
+        
+    /*
 
     //Refit in case of fit failure
     int refitCounter2(0);
@@ -419,6 +425,7 @@ void DirectionFittingThreeDTool::PerformFits(HitObjectVector &hitObjectVector, f
         pMinuit2->mnexcm("MIGRAD", arglist2, 1, fitStatus2);
         ++refitCounter2;
     }  
+    */
 
     double outpar2[2], err2[2];
 
@@ -465,21 +472,35 @@ void DirectionFittingThreeDTool::SetFinalFitValues(HitObjectVector &hitObjectVec
     {
         if (forwards)
         {
-            int binNumber(std::floor(hitObject.GetLongitudinalPosition()/globalLookupTable3D.GetBinWidth()));
-            double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
-            double hitUncertainty(1.0);
+            try
+            {
+                int binNumber(std::floor(hitObject.GetLongitudinalPosition()/globalLookupTable3D.GetBinWidth()));
+                double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+                double hitUncertainty(1.0);
 
-            hitObject.SetForwardsFitdEdx(fitdEdx); 
-            forwardsChiSquared += ((hitObject.GetdEdx() - fitdEdx) * (hitObject.GetdEdx() - fitdEdx) )/(hitUncertainty * hitUncertainty);
+                hitObject.SetForwardsFitdEdx(fitdEdx); 
+                forwardsChiSquared += ((hitObject.GetdEdx() - fitdEdx) * (hitObject.GetdEdx() - fitdEdx) )/(hitUncertainty * hitUncertainty);
+            }
+            catch (...)
+            {
+                continue;
+            }
         }
         else
         {
-            int binNumber(std::floor((globalTrackLength3D - hitObject.GetLongitudinalPosition())/globalLookupTable3D.GetBinWidth()));
-            double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
-            double hitUncertainty(1.0);
+            try
+            {
+                int binNumber(std::floor((globalTrackLength3D - hitObject.GetLongitudinalPosition())/globalLookupTable3D.GetBinWidth()));
+                double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+                double hitUncertainty(1.0);
 
-            hitObject.SetBackwardsFitdEdx(fitdEdx); 
-            backwardsChiSquared += ((hitObject.GetdEdx() - fitdEdx) * (hitObject.GetdEdx() - fitdEdx) )/(hitUncertainty * hitUncertainty);
+                hitObject.SetBackwardsFitdEdx(fitdEdx); 
+                backwardsChiSquared += ((hitObject.GetdEdx() - fitdEdx) * (hitObject.GetdEdx() - fitdEdx) )/(hitUncertainty * hitUncertainty);
+            }
+            catch (...)
+            {
+                continue;
+            }
         }
     }
 }
