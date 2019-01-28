@@ -41,6 +41,7 @@ TrackDirectionTool::TrackDirectionTool() :
     m_minClusterCaloHits(10),
     m_minClusterLength(5.f),
     m_numberTrackEndHits(100000),
+    m_endpointProtectionFraction(0.05),
     m_enableFragmentRemoval(true),
     m_enableSplitting(true),
     m_tableInitialEnergy(2000.f),
@@ -463,7 +464,7 @@ void TrackDirectionTool::FillHitChargeVector(const Cluster *const pCluster, HitC
 void TrackDirectionTool::TrackInnerFilter(HitChargeVector &hitChargeVector, HitChargeVector &filteredHitChargeVector)
 {
     //Fill endpoint protected area into filtered vector and put all other hits in a separate vector
-    float endpointProtectionRange(0.05);
+    float endpointProtectionRange(m_endpointProtectionFraction);
 
     filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(),  hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size());
     filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size(), hitChargeVector.end());
@@ -1976,6 +1977,9 @@ StatusCode TrackDirectionTool::ReadSettings(const TiXmlHandle xmlHandle)
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "NumberTrackEndHits", m_numberTrackEndHits));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "EndpointProtectionFraction", m_endpointProtectionFraction));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "EnableFragmentRemoval", m_enableFragmentRemoval));

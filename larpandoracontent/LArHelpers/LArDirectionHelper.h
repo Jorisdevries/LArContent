@@ -29,11 +29,15 @@ public:
 
     static float GetAngleWithVector(const pandora::Pandora &pandora, const pandora::ParticleFlowObject* pPfo, pandora::CartesianVector &axisVector);
 
+    static std::vector<pandora::CartesianVector> GetLowHighYPoints(const pandora::Pandora &pandora, const pandora::ParticleFlowObject* pPfo);
+
+    static bool IntersectsYFace(const pandora::Pandora &pandora, const pandora::ParticleFlowObject* pPfo);
+
     static bool IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult);
 
-    static bool HasFiducialLowY(TrackDirectionTool::DirectionFitObject &fitResult);
+    static bool HasFiducialLowY(const pandora::Pandora &pandora, const pandora::ParticleFlowObject* pPfo);
 
-    static bool HasHighTopY(TrackDirectionTool::DirectionFitObject &fitResult, float threshold);
+    static bool HasHighTopY(const pandora::Pandora &pandora, const pandora::ParticleFlowObject* pPfo, float threshold);
 
     static float CalculateCosmicProbability(TrackDirectionTool::DirectionFitObject &directionFit);
 

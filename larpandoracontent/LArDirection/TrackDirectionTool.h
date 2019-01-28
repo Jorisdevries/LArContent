@@ -246,6 +246,7 @@ public:
 
         float GetDeltaChiSquaredPerHit();
         float GetUpDownDeltaChiSquaredPerHit();
+        float GetUpDownDeltaChiSquared();
 
         float GetMeanChargeOverWidth();
 
@@ -350,6 +351,7 @@ public:
 
     int                     m_targetParticlePDG;
     int                     m_numberTrackEndHits;
+    float                   m_endpointProtectionFraction;
     bool                    m_enableFragmentRemoval;
     bool                    m_enableSplitting;
 
@@ -1113,6 +1115,23 @@ inline float TrackDirectionTool::DirectionFitObject::GetUpDownDeltaChiSquaredPer
     float updownDeltaChiSquaredPerHit(downwardsChiSquaredPerHit - upwardsChiSquaredPerHit); 
 
     return updownDeltaChiSquaredPerHit;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float TrackDirectionTool::DirectionFitObject::GetUpDownDeltaChiSquared()
+{
+    const pandora::CartesianVector beginPoint(m_beginx, m_beginy, m_beginz);
+    const pandora::CartesianVector endPoint(m_endx, m_endy, m_endz);
+
+    float forwardsChiSquared(m_forwardschisquared), backwardsChiSquared(m_backwardschisquared);
+
+    int recoDownwards(endPoint.GetY() < beginPoint.GetY() ? 1 : 0);
+
+    float upwardsChiSquared(recoDownwards == 0 ? forwardsChiSquared : backwardsChiSquared), downwardsChiSquared(recoDownwards == 1 ? forwardsChiSquared : backwardsChiSquared);
+    float updownDeltaChiSquared(downwardsChiSquared - upwardsChiSquared); 
+
+    return updownDeltaChiSquared;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

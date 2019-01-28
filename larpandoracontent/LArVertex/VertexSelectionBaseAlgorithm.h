@@ -34,6 +34,8 @@ public:
      */
     VertexSelectionBaseAlgorithm();
 
+    ~VertexSelectionBaseAlgorithm();
+
     /**
      *  @brief  VertexScore class
      */
@@ -307,6 +309,8 @@ protected:
 private:
     pandora::StatusCode Run();
 
+    void WriteVertexInformation(const pandora::VertexList *pInputVertexList, const pandora::MCParticleList *pMCParticleList, pandora::VertexVector &filteredVertices, pandora::VertexList &selectedVertexList);
+
     /**
      *  @brief Gets the vertex offset in 3 dimensions w.r.t. the true MC interaction vertex 
      *
@@ -399,6 +403,11 @@ private:
 
     bool                    m_cheatVertexSelection;         ///< Whether to cheat the vertex selection
     std::string             m_mcParticleListName;           ///< For cheating the vertex selection
+    std::string             m_caloHitListName;           ///< For cheating the vertex selection
+
+    int                     m_fileIdentifier;               ///< The input file identifier
+    int                     m_eventNumber;                  ///< The event number
+    bool                    m_writeToTree;
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------

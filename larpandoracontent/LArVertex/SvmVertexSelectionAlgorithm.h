@@ -400,6 +400,9 @@ private:
     const pandora::Vertex * ScoreVertices(const pandora::VertexVector &vertexVector, pandora::ClusterList &clusterList, const VertexFeatureInfoMap &vertexFeatureInfoMap,
         const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi, const bool useDirection) const;
 
+    const pandora::Vertex * ScoreVerticesSimple(const pandora::VertexVector &vertexVector, pandora::ClusterList &clusterList, const VertexFeatureInfoMap &vertexFeatureInfoMap,
+        const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi, const bool useDirection) const;
+
     float GetVertexDR(const pandora::Vertex* const pVertex, bool enableSpaceChargeCorrection) const;
 
     /**

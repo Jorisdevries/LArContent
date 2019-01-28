@@ -37,21 +37,50 @@ float LArDirectionHelper::GetAngleWithVector(const Pandora &pandora, const pando
     //if (trackStateVector.back().GetZ() > trackStateVector.front().GetZ())
     //    vertexDirection = (trackStateVector.back().GetPosition() - trackStateVector.front().GetPosition());
 
-    if (trackStateVector.back().GetPosition().GetZ() < trackStateVector.front().GetPosition().GetZ())
-        vertexDirection = (trackStateVector.front().GetPosition() - trackStateVector.back().GetPosition());
+    //if (trackStateVector.back().GetPosition().GetZ() < trackStateVector.front().GetPosition().GetZ())
+    //    vertexDirection = (trackStateVector.front().GetPosition() - trackStateVector.back().GetPosition());
 
     return axisVector.GetOpeningAngle(vertexDirection);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-bool LArDirectionHelper::IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult)
+std::vector<CartesianVector> LArDirectionHelper::GetLowHighYPoints(const Pandora &pandora, const pandora::ParticleFlowObject* pPfo)
 {
-    pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());
-    pandora::CartesianVector endPosition(fitResult.GetEndpoint());
+    LArTrackStateVector trackStateVector; 
+    LArPfoHelper::GetSlidingFitTrajectory(pPfo, LArPfoHelper::GetVertex(pPfo), 20, LArGeometryHelper::GetWireZPitch(pandora), trackStateVector);
+
+    std::vector<CartesianVector> positions;
+
+    if (trackStateVector.size() == 0)
+        return positions;
+
+    //ascending order: front is low y
+    std::sort(trackStateVector.begin(), trackStateVector.end(), [](LArTrackState &state1, LArTrackState &state2){return state1.GetPosition().GetY() < state2.GetPosition().GetY();});
+
+    pandora::CartesianVector initialPosition(trackStateVector.front().GetPosition());
+    pandora::CartesianVector endPosition(trackStateVector.back().GetPosition());
 
     pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
     pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
+
+    positions.push_back(lowYVector);
+    positions.push_back(highYVector);
+
+    return positions; 
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+bool LArDirectionHelper::IntersectsYFace(const Pandora &pandora, const pandora::ParticleFlowObject* pPfo)
+{
+    std::vector<CartesianVector> positions(GetLowHighYPoints(pandora, pPfo));
+
+    if (positions.size() == 0)
+        return false;
+
+    pandora::CartesianVector lowYVector(positions.front());
+    pandora::CartesianVector highYVector(positions.back());
 
     float xExtent(highYVector.GetX() - lowYVector.GetX()), yExtent(highYVector.GetY() - lowYVector.GetY()), zExtent(highYVector.GetZ() - lowYVector.GetZ());
     float xSlope(xExtent/yExtent), zSlope(zExtent/yExtent);
@@ -66,13 +95,36 @@ bool LArDirectionHelper::IntersectsYFace(TrackDirectionTool::DirectionFitObject 
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-bool LArDirectionHelper::HasFiducialLowY(TrackDirectionTool::DirectionFitObject &fitResult)
+bool LArDirectionHelper::IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult) 
 {
-    pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());
-    pandora::CartesianVector endPosition(fitResult.GetEndpoint());
+    const pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());
+    const pandora::CartesianVector endPosition(fitResult.GetEndpoint());
 
-    pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
-    pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
+    const pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
+    const pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
+
+    float xExtent(highYVector.GetX() - lowYVector.GetX()), yExtent(highYVector.GetY() - lowYVector.GetY()), zExtent(highYVector.GetZ() - lowYVector.GetZ());
+    float xSlope(xExtent/yExtent), zSlope(zExtent/yExtent);
+    float yDistanceToTravel(116.5 - highYVector.GetY());
+    CartesianVector yFaceIntersection(highYVector.GetX() + xSlope*yDistanceToTravel, 116.5, highYVector.GetZ() + zSlope*yDistanceToTravel);
+
+    if (yFaceIntersection.GetX() > 0.0 && yFaceIntersection.GetX() < 256.35 && yFaceIntersection.GetZ() > 0.0 && yFaceIntersection.GetZ() < 1036.8)
+        return true;
+    else 
+        return false;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+bool LArDirectionHelper::HasFiducialLowY(const Pandora &pandora, const pandora::ParticleFlowObject* pPfo)
+{
+    std::vector<CartesianVector> positions(GetLowHighYPoints(pandora, pPfo));
+
+    if (positions.size() == 0)
+        return false;
+
+    pandora::CartesianVector lowYVector(positions.front());
+    pandora::CartesianVector highYVector(positions.back());
 
     if (IsInFiducialVolume(lowYVector))
         return true;
@@ -82,13 +134,15 @@ bool LArDirectionHelper::HasFiducialLowY(TrackDirectionTool::DirectionFitObject 
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-bool LArDirectionHelper::HasHighTopY(TrackDirectionTool::DirectionFitObject &fitResult, float threshold)
+bool LArDirectionHelper::HasHighTopY(const Pandora &pandora, const pandora::ParticleFlowObject* pPfo, float threshold)
 {
-    pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());
-    pandora::CartesianVector endPosition(fitResult.GetEndpoint());
+    std::vector<CartesianVector> positions(GetLowHighYPoints(pandora, pPfo));
 
-    pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
-    pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
+    if (positions.size() == 0)
+        return false;
+
+    pandora::CartesianVector lowYVector(positions.front());
+    pandora::CartesianVector highYVector(positions.back());
 
     if (highYVector.GetY() > threshold)
         return true;
@@ -129,8 +183,8 @@ float LArDirectionHelper::CalculateCosmicProbability(TrackDirectionTool::Directi
 
 bool LArDirectionHelper::IsStoppingTopFaceMCParticle(const pandora::MCParticle* pMCParticle)
 {
-    pandora::CartesianVector initialPosition(pMCParticle->GetVertex());
-    pandora::CartesianVector endPosition(pMCParticle->GetEndpoint());
+    const pandora::CartesianVector initialPosition(pMCParticle->GetVertex());
+    const pandora::CartesianVector endPosition(pMCParticle->GetEndpoint());
 
     pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
     pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);

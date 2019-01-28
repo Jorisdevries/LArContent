@@ -187,7 +187,7 @@ void SvmVertexSelectionAlgorithm::GetVertexScoreList(const VertexVector &vertexV
         {
             try
             {
-                pBestRegionVertex = this->ScoreVertices(bestRegionVertices, clustersW, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
+                pBestRegionVertex = this->ScoreVerticesSimple(bestRegionVertices, clustersW, vertexFeatureInfoMap, eventFeatureList, m_svMachineRegion,
                 m_useRPhiFeatureForRegion, m_enableDirectionFeatures);
             }
             catch (...)
@@ -1128,6 +1128,69 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVertices(const VertexV
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVerticesSimple(const VertexVector &vertexVector, ClusterList &clusterList, const VertexFeatureInfoMap &vertexFeatureInfoMap,
+    const LArMvaHelper::MvaFeatureVector &eventFeatureList, const SupportVectorMachine &supportVectorMachine, const bool useRPhi, const bool useDirection) const 
+{
+    const Vertex *pBestVertex(vertexVector.front());
+    LArMvaHelper::MvaFeatureVector chosenFeatureList;
+
+    VertexFeatureInfo chosenVertexFeatureInfo(vertexFeatureInfoMap.at(pBestVertex));
+    this->AddVertexFeaturesToVector(chosenVertexFeatureInfo, chosenFeatureList, useRPhi, useDirection);
+
+    const auto pLongestCluster(m_pDirectionFlowProbabilityTool->GetLongestCluster(clusterList));
+    TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetClusterDirection(pLongestCluster);
+    float probability(directionFit.GetProbability());
+
+    const auto beginPoint(directionFit.GetBeginpoint()), endPoint(directionFit.GetEndpoint());
+    const auto longestClusterDirection((endPoint - beginPoint).GetUnitVector());
+
+    for (const Vertex *const pVertex : vertexVector)
+    {
+        if (pVertex == pBestVertex)
+            continue;
+
+        const pandora::CartesianVector vertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pVertex->GetPosition(), TPC_VIEW_W) - beginPoint);
+        const float projection(vertexProjection.GetDotProduct(longestClusterDirection)/(endPoint - beginPoint).GetMagnitude());
+
+        const pandora::CartesianVector bestVertexProjection(LArGeometryHelper::ProjectPosition(this->GetPandora(), pBestVertex->GetPosition(), TPC_VIEW_W) - beginPoint);
+        const float bestProjection(bestVertexProjection.GetDotProduct(longestClusterDirection)/(endPoint - beginPoint).GetMagnitude());
+
+        LArMvaHelper::MvaFeatureVector featureList;
+        VertexFeatureInfo vertexFeatureInfo(vertexFeatureInfoMap.at(pVertex));
+        this->AddVertexFeaturesToVector(vertexFeatureInfo, featureList, useRPhi, useDirection);
+
+        float newVertexProbability(LArMvaHelper::CalculateProbability(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
+        float bestVertexProbability(LArMvaHelper::CalculateProbability(supportVectorMachine, eventFeatureList, chosenFeatureList, featureList));
+
+        if (directionFit.GetMinChiSquaredPerHit() >= 2.0)
+        {
+            if (projection < 0)
+                newVertexProbability = probability;
+            else if (projection >= 0 && projection <= 1)
+                newVertexProbability = probability - (projection * (1 - probability)); 
+            else if (projection > 1)
+                newVertexProbability = (1 - probability);
+
+            if (bestProjection < 0)
+                bestVertexProbability = probability;
+            else if (bestProjection >= 0 && bestProjection <= 1)
+                bestVertexProbability = probability - (bestProjection * (1 - probability)); 
+            else if (bestProjection > 1)
+                bestVertexProbability = (1 - probability);
+        }
+
+        if (newVertexProbability > bestVertexProbability)
+        {
+            pBestVertex = pVertex;
+            chosenFeatureList = featureList;
+        }
+    }
+
+    return pBestVertex;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 float SvmVertexSelectionAlgorithm::GetVertexDR(const pandora::Vertex* const pVertex, bool enableSpaceChargeCorrection) const
 {
     // Extract input collections
@@ -1144,8 +1207,7 @@ float SvmVertexSelectionAlgorithm::GetVertexDR(const pandora::Vertex* const pVer
     CartesianVector vertexCandidatePosition(pVertex->GetPosition());
         
     if (enableSpaceChargeCorrection)
-        std::cout << "Currently does nothing." << std::endl;
-        //vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
+        vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
 
     return (vertexCandidatePosition - trueVertexPosition).GetMagnitude();
 }
@@ -1175,7 +1237,7 @@ void SvmVertexSelectionAlgorithm::PopulateFinalVertexScoreList(const VertexFeatu
 
 StatusCode SvmVertexSelectionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 {
-    //LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
+    LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
 
     AlgorithmToolVector algorithmToolVector;
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ProcessAlgorithmToolList(*this, xmlHandle, "FeatureTools", algorithmToolVector));

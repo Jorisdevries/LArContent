@@ -25,6 +25,7 @@ DirectionFlowProbabilityTool::DirectionFlowProbabilityTool() :
     m_minimumClusterLength(5.f),
     m_minimumNumberClusterHits(20),
     m_maxBestChiSquaredPerHit(3.f),
+    m_considerDaughters(false),
     m_enableVisualisation(false)
 {
 }
@@ -152,6 +153,8 @@ int DirectionFlowProbabilityTool::GetNumberConsideredClusters(std::function< Tra
         pandora::ClusterVector inputClusterVector;
         this->SelectClusters(directionToolLambda, inputClusterList, inputClusterVector);
 
+        //std::sort(inputClusterVector.begin(), inputClusterVector.end(), [](const pandora::Cluster* const pCluster1, const pandora::Cluster* const pCluster2){ return LArClusterHelper::GetLengthSquared(pCluster1) > LArClusterHelper::GetLengthSquared(pCluster2);}); //largest clusters first
+
         //Get primary clusters
         pandora::ClusterVector primaryClusters(this->GetPrimaryClusters(vertexProjection, inputClusterVector));
 
@@ -204,8 +207,11 @@ void DirectionFlowProbabilityTool::GetDirectionFlowContribution(pandora::Cluster
         else
             accumulatedProbability *= GetSmoothProbability(fitResult.GetProbability(), fitResult.GetBeginpoint(), fitResult.GetEndpoint(), vertexProjection); 
 
-        pandora::ClusterVector daughterClusters(this->GetOrderedDaughters(vertexProjection, pPrimaryCluster, inputClusterVector, primaryClusters));
-        DaughtersDirectionFlowContribution(daughterClusters, pPrimaryCluster, vertexProjection, accumulatedProbability);
+        if (m_considerDaughters)
+        {
+            pandora::ClusterVector daughterClusters(this->GetOrderedDaughters(vertexProjection, pPrimaryCluster, inputClusterVector, primaryClusters));
+            DaughtersDirectionFlowContribution(daughterClusters, pPrimaryCluster, vertexProjection, accumulatedProbability);
+        }
     }
 }
 
@@ -541,6 +547,9 @@ StatusCode DirectionFlowProbabilityTool::ReadSettings(const TiXmlHandle xmlHandl
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "EnableVisualisation", m_enableVisualisation));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "ConsiderDaughters", m_considerDaughters));
 
     return STATUS_CODE_SUCCESS;
 }

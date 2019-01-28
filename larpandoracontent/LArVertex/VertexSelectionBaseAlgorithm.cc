@@ -11,6 +11,7 @@
 #include "larpandoracontent/LArHelpers/LArGeometryHelper.h"
 #include "larpandoracontent/LArHelpers/LArSpaceChargeHelper.h"
 #include "larpandoracontent/LArHelpers/LArMCParticleHelper.h"
+#include "larpandoracontent/LArHelpers/LArInteractionTypeHelper.h"
 
 #include "larpandoracontent/LArUtility/KDTreeLinkerAlgoT.h"
 
@@ -34,8 +35,19 @@ VertexSelectionBaseAlgorithm::VertexSelectionBaseAlgorithm() :
     m_gapTolerance(0.f),
     m_isEmptyViewAcceptable(true),
     m_minVertexAcceptableViews(3),
-    m_cheatVertexSelection(false)
+    m_cheatVertexSelection(false),
+    m_fileIdentifier(0),
+    m_eventNumber(0),
+    m_writeToTree(false)
 {
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+VertexSelectionBaseAlgorithm::~VertexSelectionBaseAlgorithm()
+{
+    if (m_writeToTree)
+        PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "VertexSelection", "vertex_selection.root", "UPDATE"));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -43,15 +55,6 @@ VertexSelectionBaseAlgorithm::VertexSelectionBaseAlgorithm() :
 void VertexSelectionBaseAlgorithm::FilterVertexList(const VertexList *const pInputVertexList, HitKDTree2D &kdTreeU, HitKDTree2D &kdTreeV,
     HitKDTree2D &kdTreeW, VertexVector &filteredVertices) const
 {
-    /*
-    (void) kdTreeU;
-    (void) kdTreeV;
-    (void) kdTreeW;
-
-    for (const Vertex *const pVertex : *pInputVertexList)
-        filteredVertices.push_back(pVertex);
-    */
-
     for (const Vertex *const pVertex : *pInputVertexList)
     {
         unsigned int nAcceptableViews(0);
@@ -151,6 +154,8 @@ void VertexSelectionBaseAlgorithm::CalculateClusterSlidingFits(const ClusterList
 
 StatusCode VertexSelectionBaseAlgorithm::Run()
 {
+    ++m_eventNumber;
+
     const VertexList *pInputVertexList(NULL);
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pInputVertexList));
 
@@ -211,6 +216,11 @@ StatusCode VertexSelectionBaseAlgorithm::Run()
 
     this->SelectTopScoreVertices(vertexScoreList, selectedVertexList);
 
+    std::cout << ">>>>>>>>>>>>>>>>>> RUNNING" << std::endl;
+
+    if (m_writeToTree)
+        this->WriteVertexInformation(pInputVertexList, pMCParticleList, filteredVertices, selectedVertexList);
+
     if (!selectedVertexList.empty())
     {
         PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList(*this, m_outputVertexListName, selectedVertexList));
@@ -220,6 +230,53 @@ StatusCode VertexSelectionBaseAlgorithm::Run()
     }
 
     return STATUS_CODE_SUCCESS;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void VertexSelectionBaseAlgorithm::WriteVertexInformation(const pandora::VertexList *pInputVertexList, const pandora::MCParticleList *pMCParticleList, pandora::VertexVector &filteredVertices, VertexList &selectedVertexList)
+{
+    const CaloHitList *pCaloHitList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_caloHitListName, pCaloHitList));
+
+    float deltaR(this->GetVertexDR(pMCParticleList, selectedVertexList.front(), true));
+    float deltaRMin(1e6);
+
+    std::cout << "Vertex Delta R: " << deltaR << std::endl;
+
+    for (const auto pVertex: *pInputVertexList)
+    {
+        if (std::abs(this->GetVertexDR(pMCParticleList, pVertex, true)  - 0.5) < deltaRMin) //MC-reco offset is 0.5
+            deltaRMin = this->GetVertexDR(pMCParticleList, pVertex, true);
+    }
+
+    int interactionTypeInt(-1);
+
+    try
+    {
+        LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap;
+        LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, LArMCParticleHelper::PrimaryParameters(),
+            LArMCParticleHelper::IsBeamNeutrinoFinalState, nuMCParticlesToGoodHitsMap);
+
+        MCParticleList mcPrimaryList;
+        for (const auto &mapEntry : nuMCParticlesToGoodHitsMap) mcPrimaryList.push_back(mapEntry.first);
+        mcPrimaryList.sort(LArMCParticleHelper::SortByMomentum);
+
+        const LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(mcPrimaryList));
+        interactionTypeInt = interactionType;
+    }
+    catch (...)
+    {
+    }
+
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "VertexSelection", "DeltaR", deltaR));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "VertexSelection", "DeltaRMin", deltaRMin));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "VertexSelection", "NumberCandidates", static_cast<int>(pInputVertexList->size())));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "VertexSelection", "NumberFilteredCandidates", static_cast<int>(filteredVertices.size())));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "VertexSelection", "TrueInteractionType", interactionTypeInt));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "VertexSelection", "FileIdentifier", m_fileIdentifier));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "VertexSelection", "EventNumber", m_eventNumber));
+    PANDORA_MONITORING_API(FillTree(this->GetPandora(), "VertexSelection"));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -236,8 +293,7 @@ float VertexSelectionBaseAlgorithm::GetVertexDR(const pandora::MCParticleList *p
     CartesianVector vertexCandidatePosition(pVertex->GetPosition());
     
     if (enableSpaceChargeCorrection)
-        std::cout << "Currently does nothing." << std::endl;
-        //vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
+        vertexCandidatePosition = LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(vertexCandidatePosition);
 
     return (vertexCandidatePosition - trueVertexPosition).GetMagnitude();
 }
@@ -460,6 +516,15 @@ StatusCode VertexSelectionBaseAlgorithm::ReadSettings(const TiXmlHandle xmlHandl
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "MCParticleListName", m_mcParticleListName));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "CaloHitListName", m_caloHitListName));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "WriteToTree", m_writeToTree));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "FileIdentifier", m_fileIdentifier));
 
     return STATUS_CODE_SUCCESS;
 }
