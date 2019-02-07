@@ -21,6 +21,7 @@
 #include "larpandoracontent/LArHelpers/LArGeometryHelper.h"
 #include "larpandoracontent/LArHelpers/LArInteractionTypeHelper.h"
 #include "larpandoracontent/LArHelpers/LArDirectionHelper.h"
+#include "larpandoracontent/LArHelpers/LArSpaceChargeHelper.h"
 
 #include "larpandoracontent/LArObjects/LArCaloHit.h"
 #include "larpandoracontent/LArObjects/LArMCParticle.h"
@@ -70,7 +71,6 @@ MasterAlgorithm::~MasterAlgorithm()
         try  
         {    
             PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "TopFaceCosmicRemoval", m_fileName.c_str(), "UPDATE"));
-            PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "AmbiguousPfoCheck", m_fileName.c_str(), "UPDATE"));
         }    
         catch (const StatusCodeException &)
         {    
@@ -389,102 +389,103 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
         if (!pPfo->GetParentPfoList().empty())
             continue;
 
-        const auto pMCParticle(LArMCParticleHelper::GetMainMCParticle(pPfo));
-        const bool isTrueCosmicRay(LArMCParticleHelper::IsCosmicRay(pMCParticle));
-
-        const pandora::CartesianVector initialPosition(pMCParticle->GetVertex());
-        const pandora::CartesianVector endPosition(pMCParticle->GetEndpoint());
-
-        const pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
-        const pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
-
-        float xExtent(highYVector.GetX() - lowYVector.GetX()), yExtent(highYVector.GetY() - lowYVector.GetY()), zExtent(highYVector.GetZ() - lowYVector.GetZ());
-        float xSlope(xExtent/yExtent), zSlope(zExtent/yExtent);
-        float yDistanceToTravel(116.5 - lowYVector.GetY());
-        CartesianVector yFaceIntersection(lowYVector.GetX() + xSlope*yDistanceToTravel, 116.5, lowYVector.GetZ() + zSlope*yDistanceToTravel);
-
-        const bool mcFiducialLowY(this->IsInFiducialVolume(lowYVector));
-        const bool mcIntersectsTopFace(highYVector.GetZ() > 116.5 && yFaceIntersection.GetX() > 0.0 && yFaceIntersection.GetX() < 256.35 && yFaceIntersection.GetZ() > 0.0 && yFaceIntersection.GetZ() < 1036.8);
-        const bool isTargetCosmic(isTrueCosmicRay && mcFiducialLowY && mcIntersectsTopFace);
-
-        float pfoCosmicProbability(0.f), deltaChiSquaredUpDownPerHit(0.f), deltaChiSquaredUpDown(0.f);
-        bool isTargetTopFacePfo(false), pfoIntersectsTopFace(false), pfoFiducialLowY(false), pfoHighTopY(false);
-        float pfoPolarAngle(0.f);
-
-        try
+        float pfoCosmicProbability(0.f), deltaChiSquaredUpDownPerHit(0.f), deltaChiSquaredUpDown(0.f), pfoPolarAngle(0.f);
+        bool isTargetTopFacePfo(false), pfoIntersectsTopFace(false), pfoFiducialLowY(false), pfoHighTopY(false), isTargetCosmic(false);
+        
+        if (m_recoTopFaceCosmicRemoval)
         {
-            CartesianVector yAxis(0.f, 1.f, 0.f);
-            pfoPolarAngle = (GetAngleWithVector(pPfo, yAxis));
+            const auto pMCParticle(LArMCParticleHelper::GetMainMCParticle(pPfo));
 
-            //std::cout << "pfoPolarAngle: " << pfoPolarAngle << std::endl;
+            if (pMCParticle->GetParticleId() != 13)
+                continue;
 
-            TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetPfoDirection(pPfo);
-            pfoCosmicProbability = this->CalculateCosmicProbability(directionFit);
-            deltaChiSquaredUpDownPerHit = directionFit.GetUpDownDeltaChiSquaredPerHit();
-            deltaChiSquaredUpDown = directionFit.GetUpDownDeltaChiSquared();
+            const bool isTrueCosmicRay(LArMCParticleHelper::IsCosmicRay(pMCParticle));
 
-            pfoIntersectsTopFace = this->IntersectsYFace(directionFit);
-            pfoFiducialLowY = this->HasFiducialLowY(directionFit);
-            pfoHighTopY = this->HasHighTopY(directionFit, 100.0);
-            isTargetTopFacePfo = (pfoHighTopY && pfoIntersectsTopFace && pfoFiducialLowY);
+            const pandora::CartesianVector lowYVector(pMCParticle->GetVertex().GetY() < pMCParticle->GetEndpoint().GetY() ? pMCParticle->GetVertex() : pMCParticle->GetEndpoint());
+            const pandora::CartesianVector highYVector(pMCParticle->GetVertex().GetY() > pMCParticle->GetEndpoint().GetY() ? pMCParticle->GetVertex() : pMCParticle->GetEndpoint());
 
-            const pandora::CartesianVector pfoInitialPosition(directionFit.GetBeginpoint());
-            const pandora::CartesianVector pfoEndPosition(directionFit.GetEndpoint());
+            const bool mcFiducialLowY(this->IsInFiducialVolume(lowYVector));
+            const bool mcIntersectsTopFace(highYVector.GetZ() > 116.5 && LArDirecionHelper::IntersectsYFace(this->GetPandora(), lowYVector, highYVector));
+            isTargetCosmic = (isTrueCosmicRay && mcFiducialLowY && mcIntersectsTopFace);
 
-            const pandora::CartesianVector pfoLowYVector(pfoInitialPosition.GetY() < pfoEndPosition.GetY() ? pfoInitialPosition : pfoEndPosition);
-            const pandora::CartesianVector pfoHighYVector(pfoInitialPosition.GetY() > pfoEndPosition.GetY() ? pfoInitialPosition : pfoEndPosition);
-
-            if (pfoIntersectsTopFace && pfoFiducialLowY && pfoHighTopY)
-                eventContainsTargetPfo = true;
-            if (isTargetCosmic)
-                eventContainsTrueTargetCR = true;
-
-            /*
-            std::cout << ">>>>>>>>>>>>> deltaChiSquaredUpDownPerHit: " << deltaChiSquaredUpDownPerHit << std::endl;
-            std::cout << "MC vertex x: " << pMCParticle->GetVertex().GetX() << std::endl;
-
-            if (pMCParticle->GetVertex().GetX() > 19.2 && pMCParticle->GetVertex().GetX() < 19.3)
+            try
             {
+                CartesianVector yAxis(0.f, 1.f, 0.f);
+                pfoPolarAngle = LArDirectionHelper::GetAngleWithVector(pPfo, yAxis);
+
+                TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetPfoDirection(pPfo);
+                TrackDirectionTool::FitParameters fitEndpointEnergy(directionFit.GetFitParameters.GetParameterZero());
+                float endpointFitChargeRatio(directionFit.GetEndpointFitChargeRatio());
+
+                pfoCosmicProbability = LArDirectionHelper::CalculateCosmicProbability(directionFit);
+                deltaChiSquaredUpDownPerHit = directionFit.GetUpDownDeltaChiSquaredPerHit();
+                deltaChiSquaredUpDown = directionFit.GetUpDownDeltaChiSquared();
+
+                std::vector<VartesianVector> lowHighYPositions(LArDirectionHelper::GetLowHighYPoints(this->GetPandora(), pPfo));
+                pandora::CartesianVector correctedPfoLowYVector(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(lowHighYPositions.at(0)));
+                pandora::CartesianVector correctedPfoHighYVector(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(lowHighYPositions.at(1)));
+
+                pfoIntersectsTopFace = LArDirectionHelper::IntersectsYFace(this->GetPandora(), correctedPfoLowYVector, correctedPfoHighYVector);
+                pfoFiducialLowY = LArDirectionHelper::IsInFiducialVolume(correctedPfoLowYVector);
+                pfoHighTopY = (correctedPfoHighYVector.GetY() >= 100.0 ? true : false); 
+                isTargetTopFacePfo = (pfoHighTopY && pfoIntersectsTopFace && pfoFiducialLowY);
+
+                if (pfoIntersectsTopFace && pfoFiducialLowY && pfoHighTopY)
+                    eventContainsTargetPfo = true;
+                if (isTargetCosmic)
+                    eventContainsTrueTargetCR = true;
+
+                /*
+                //event 1185:2 is an example where endpoint filtering helps
+                std::cout << ">>>>>>>>>>>>> deltaChiSquaredUpDownPerHit: " << deltaChiSquaredUpDownPerHit << std::endl;
                 std::cout << "MC vertex x: " << pMCParticle->GetVertex().GetX() << std::endl;
-                directionFit.DrawFit();
+
+                if (pMCParticle->GetVertex().GetX() > 19.2 && pMCParticle->GetVertex().GetX() < 19.3)
+                {
+                    std::cout << "MC vertex x: " << pMCParticle->GetVertex().GetX() << std::endl;
+                    directionFit.DrawFit();
+                }
+                */
+
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCPDG", pMCParticle->GetParticleId()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "FitEndpointEnergy", fitEndpointEnergy));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "EndpointFitChargeRatio", endpointFitChargeRatio));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCTargetCosmic", isTargetCosmic ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCCosmicRay", isTrueCosmicRay ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCFiducialLowY", mcFiducialLowY? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCStoppingTopFace", this->IsStoppingTopFaceMCParticle(pMCParticle) ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCIntersectsTopFace", mcIntersectsTopFace ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCLowY", lowYVector.GetY()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCHighY", highYVector.GetY()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TargetPFO", isTargetTopFacePfo ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoIntersectsTopFace", pfoIntersectsTopFace ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoFiducialLowY", pfoFiducialLowY ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighTopY", pfoHighTopY ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoSuperHighTopY", pfoHighYVector.GetY() >= 115.5 ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoPolarAngle", pfoPolarAngle));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoPolarAngleCriteriaMet", (pfoPolarAngle < 3.1415/2.0 && pfoHighYVector.GetZ() > pfoLowYVector.GetZ()) ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "HighYZLargerThanLowYZ", pfoHighYVector.GetZ() > pfoLowYVector.GetZ() ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoLowY", correctedPfoLowYVector.GetY()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighY", correctedPfoHighYVector.GetY()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoLowYEndpointZ", correctedPfoLowYVector.GetZ()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighYEndpointZ", correctedPfoHighYVector.GetZ()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TruePfoPolarAngle", (pMCParticle->GetEndpoint() - pMCParticle->GetVertex()).GetOpeningAngle(yAxis)));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TrueExtent", (pMCParticle->GetEndpoint() - pMCParticle->GetVertex()).GetMagnitude()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TrueDownwards", pMCParticle->GetEndpoint().GetY() < pMCParticle->GetVertex().GetY() ? 1 : 0 ));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "CosmicProbability", pfoCosmicProbability));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "DeltaChiSquaredUpDownPerHit", deltaChiSquaredUpDownPerHit));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "DeltaChiSquaredUpDown", deltaChiSquaredUpDown));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "FileIdentifier", m_fileIdentifier));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "EventNumber", m_eventNumber));
+                PANDORA_MONITORING_API(FillTree(this->GetPandora(), "TopFaceCosmicRemoval"));
+
+                //std::cout << "No exception 1" << std::endl;
             }
-            */
-
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCTargetCosmic", isTargetCosmic ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCCosmicRay", isTrueCosmicRay ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCFiducialLowY", mcFiducialLowY? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCStoppingTopFace", this->IsStoppingTopFaceMCParticle(pMCParticle) ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCIntersectsTopFace", mcIntersectsTopFace ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCLowY", lowYVector.GetY()));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCHighY", highYVector.GetY()));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TargetPFO", isTargetTopFacePfo ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoIntersectsTopFace", pfoIntersectsTopFace ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoFiducialLowY", pfoFiducialLowY ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighTopY", pfoHighTopY ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoSuperHighTopY", pfoHighYVector.GetY() >= 117.0 ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoPolarAngle", pfoPolarAngle));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoPolarAngleCriteriaMet", (pfoPolarAngle < 3.1415/2.0 && pfoHighYVector.GetZ() > pfoLowYVector.GetZ()) ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "HighYZLargerThanLowYZ", pfoHighYVector.GetZ() > pfoLowYVector.GetZ() ? 1 : 0));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoLowY", pfoLowYVector.GetY()));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighY", pfoHighYVector.GetY()));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoLowYEndpointZ", pfoLowYVector.GetZ()));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighYEndpointZ", pfoHighYVector.GetZ()));
-            //PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TruePfoPolarAngle", (pMCParticle->GetEndpoint() - pMCParticle->GetVertex()).GetOpeningAngle(yAxis)));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TrueExtent", (pMCParticle->GetEndpoint() - pMCParticle->GetVertex()).GetMagnitude()));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TrueDownwards", pMCParticle->GetEndpoint().GetY() < pMCParticle->GetVertex().GetY() ? 1 : 0 ));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "CosmicProbability", pfoCosmicProbability));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "DeltaChiSquaredUpDownPerHit", deltaChiSquaredUpDownPerHit));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "DeltaChiSquaredUpDown", deltaChiSquaredUpDown));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "FileIdentifier", m_fileIdentifier));
-            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "EventNumber", m_eventNumber));
-            PANDORA_MONITORING_API(FillTree(this->GetPandora(), "TopFaceCosmicRemoval"));
-
-            //std::cout << "No exception 1" << std::endl;
-        }
-        catch (...)
-        {
-            //std::cout << "Exception 1" << std::endl;
-            //continue;
+            catch (...)
+            {
+                //std::cout << "Exception 1" << std::endl;
+                //continue;
+            }
         }
 
         PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
@@ -503,40 +504,6 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
             clearCosmicRayPfos.push_back(pPfo);
     }
 
-    //NEW
-
-    bool ambiguousPfosContainNeutrino(false), correctlySet(false);
-
-    for (const auto pPfo : ambiguousPfos)
-    {
-        //only final state particles
-        if (!pPfo->GetParentPfoList().empty())
-            continue;
-
-        try
-        {
-            const auto pMCParticle(LArMCParticleHelper::GetMainMCParticle(pPfo));
-            const bool isTrueCosmicRay(LArMCParticleHelper::IsCosmicRay(pMCParticle));
-
-            if (!isTrueCosmicRay)
-                ambiguousPfosContainNeutrino = true;
-
-            correctlySet = true;
-        }
-        catch (...)
-        {
-            continue;
-        }
-    }
-
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "AmbiguousPfoCheck", "EventContainsTargetPfo", eventContainsTargetPfo ? 1 : 0));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "AmbiguousPfoCheck", "EventContainsTrueTargetCR", eventContainsTrueTargetCR ? 1 : 0));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "AmbiguousPfoCheck", "AmbiguousPfosContainNeutrino", ambiguousPfosContainNeutrino ? 1 : 0));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "AmbiguousPfoCheck", "CorrectlySet", correctlySet ? 1 : 0));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "AmbiguousPfoCheck", "FileIdentifier", m_fileIdentifier));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "AmbiguousPfoCheck", "EventNumber", m_eventNumber));
-    PANDORA_MONITORING_API(FillTree(this->GetPandora(), "AmbiguousPfoCheck"));
-
     if (m_visualizeOverallRecoStatus)
     {
         PANDORA_MONITORING_API(VisualizeParticleFlowObjects(this->GetPandora(), &clearCosmicRayPfos, "ClearCRPfos", RED));
@@ -545,143 +512,6 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
     }
 
     return STATUS_CODE_SUCCESS;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-float MasterAlgorithm::GetAngleWithVector(const pandora::ParticleFlowObject* pPfo, CartesianVector &axisVector) const
-{
-    LArTrackStateVector trackStateVector; 
-    LArPfoHelper::GetSlidingFitTrajectory(pPfo, LArPfoHelper::GetVertex(pPfo), 20, LArGeometryHelper::GetWireZPitch(this->GetPandora()), trackStateVector);
-
-    if (trackStateVector.size() == 0)
-        return -1.f;
-
-    //ascending order: front is low y
-    std::sort(trackStateVector.begin(), trackStateVector.end(), [](LArTrackState &state1, LArTrackState &state2){return state1.GetPosition().GetY() < state2.GetPosition().GetY();});
-
-    pandora::CartesianVector vertexDirection(trackStateVector.back().GetPosition() - trackStateVector.front().GetPosition());
-
-    //if (trackStateVector.back().GetZ() > trackStateVector.front().GetZ())
-    //    vertexDirection = (trackStateVector.back().GetPosition() - trackStateVector.front().GetPosition());
-
-    //if (trackStateVector.back().GetPosition().GetZ() < trackStateVector.front().GetPosition().GetZ())
-    //    vertexDirection = (trackStateVector.front().GetPosition() - trackStateVector.back().GetPosition());
-
-    return axisVector.GetOpeningAngle(vertexDirection);
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-bool MasterAlgorithm::IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult) const
-{
-    const pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());
-    const pandora::CartesianVector endPosition(fitResult.GetEndpoint());
-
-    const pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
-    const pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
-
-    float xExtent(highYVector.GetX() - lowYVector.GetX()), yExtent(highYVector.GetY() - lowYVector.GetY()), zExtent(highYVector.GetZ() - lowYVector.GetZ());
-    float xSlope(xExtent/yExtent), zSlope(zExtent/yExtent);
-    float yDistanceToTravel(116.5 - highYVector.GetY());
-    CartesianVector yFaceIntersection(highYVector.GetX() + xSlope*yDistanceToTravel, 116.5, highYVector.GetZ() + zSlope*yDistanceToTravel);
-
-    if (yFaceIntersection.GetX() > 0.0 && yFaceIntersection.GetX() < 256.35 && yFaceIntersection.GetZ() > 0.0 && yFaceIntersection.GetZ() < 1036.8)
-        return true;
-    else 
-        return false;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-bool MasterAlgorithm::HasFiducialLowY(TrackDirectionTool::DirectionFitObject &fitResult) const
-{
-    const pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());
-    const pandora::CartesianVector endPosition(fitResult.GetEndpoint());
-
-    const pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
-    const pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
-
-    if (this->IsInFiducialVolume(lowYVector))
-        return true;
-    else 
-        return false;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-bool MasterAlgorithm::HasHighTopY(TrackDirectionTool::DirectionFitObject &fitResult, float threshold) const
-{
-    const pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());
-    const pandora::CartesianVector endPosition(fitResult.GetEndpoint());
-
-    const pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
-    const pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
-
-    if (highYVector.GetY() > threshold)
-        return true;
-    else 
-        return false;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-float MasterAlgorithm::CalculateCosmicProbability(TrackDirectionTool::DirectionFitObject &directionFit) const
-{
-    float upDownDeltaChiSquaredPerHit(std::abs(directionFit.GetUpDownDeltaChiSquaredPerHit())), minChiSquaredPerHit(directionFit.GetMinChiSquaredPerHit()); 
-    int numberHits(directionFit.GetNHits());
-
-    float p_max_par1(9.57688e-01), p_max_par2(2.07682e-04), p_max_par3(-4.73225e-02);
-    float alpha_par1(4.89049e-01), alpha_par2(4.91588e-03), alpha_par3(-3.68713e-01);
-    float beta_par1(1.62781e-02), beta_par2(-5.80356e-05), beta_par3(1.82657e-03);
-
-    float p_max(std::max(p_max_par1 + p_max_par3 * minChiSquaredPerHit + p_max_par2 * numberHits, 0.5f)), alpha(std::max(alpha_par1 + alpha_par3 * minChiSquaredPerHit + alpha_par2 * numberHits, 0.1f)), beta(std::max(beta_par1 + beta_par3 * minChiSquaredPerHit + beta_par2 * numberHits, 0.001f)); 
-
-    float p0(0.5 + ((1/(2*alpha)) * ( (2*alpha*p_max + 2*beta*p_max - alpha - beta) * std::pow(((alpha + beta)/beta), (beta/alpha)))));
-
-    if (p0 > 1.0) 
-        p0 = 1.0; 
-
-    if (alpha > 1.6) 
-        alpha = 1.6; 
-
-    float probability(0.5 + (p0 - 0.5) * (1 - exp(-alpha*upDownDeltaChiSquaredPerHit)) * exp(-beta*upDownDeltaChiSquaredPerHit));
-
-    if (!this->IntersectsYFace(directionFit))
-        probability = 0.0; 
-
-    return probability;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-bool MasterAlgorithm::IsStoppingTopFaceMCParticle(const pandora::MCParticle* pMCParticle) const
-{
-    const pandora::CartesianVector initialPosition(pMCParticle->GetVertex());
-    const pandora::CartesianVector endPosition(pMCParticle->GetEndpoint());
-
-    const pandora::CartesianVector lowYVector(initialPosition.GetY() < endPosition.GetY() ? initialPosition : endPosition);
-    const pandora::CartesianVector highYVector(initialPosition.GetY() > endPosition.GetY() ? initialPosition : endPosition);
-
-    float xExtent(highYVector.GetX() - lowYVector.GetX()), yExtent(highYVector.GetY() - lowYVector.GetY()), zExtent(highYVector.GetZ() - lowYVector.GetZ());
-    float xSlope(xExtent/yExtent), zSlope(zExtent/yExtent);
-    float yDistanceToTravel(116.5 - lowYVector.GetY());
-    CartesianVector yFaceIntersection(lowYVector.GetX() + xSlope*yDistanceToTravel, 116.5, lowYVector.GetZ() + zSlope*yDistanceToTravel);
-
-    if (this->IsInFiducialVolume(lowYVector) && highYVector.GetZ() > 116.5 && yFaceIntersection.GetX() > 0.0 && yFaceIntersection.GetX() < 256.35 && yFaceIntersection.GetZ() > 0.0 && yFaceIntersection.GetZ() < 1036.8)
-        return true;
-    else 
-        return false;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-bool MasterAlgorithm::IsInFiducialVolume(pandora::CartesianVector positionVector) const
-{
-    if ((positionVector.GetX() > 12.0 && positionVector.GetX() < (256.35 - 12.0)) && (positionVector.GetY() > (-116.5 + 35.0) && positionVector.GetY() < (116.5 - 35.0)) && ((positionVector.GetZ() > 25.0 && positionVector.GetZ() < 675.0) || (positionVector.GetZ() > 775.0 && positionVector.GetZ() < (1036.8 - 85.0))))
-        return true;
-    else 
-        return false;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -1421,6 +1251,8 @@ const Pandora *MasterAlgorithm::CreateWorkerInstance(const LArTPCMap &larTPCMap,
 
 StatusCode MasterAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 {
+    LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
+
     ExternalSteeringParameters *pExternalParameters(nullptr);
 
     if (this->ExternalParametersPresent())

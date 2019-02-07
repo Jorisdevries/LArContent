@@ -95,6 +95,21 @@ bool LArDirectionHelper::IntersectsYFace(const Pandora &pandora, const pandora::
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+bool LArDirectionHelper::IntersectsYFace(const Pandora &pandora, pandora::CartesianVector &lowYVector, pandora::CartesianVector &highYVector)
+{
+    float xExtent(highYVector.GetX() - lowYVector.GetX()), yExtent(highYVector.GetY() - lowYVector.GetY()), zExtent(highYVector.GetZ() - lowYVector.GetZ());
+    float xSlope(xExtent/yExtent), zSlope(zExtent/yExtent);
+    float yDistanceToTravel(116.5 - highYVector.GetY());
+    CartesianVector yFaceIntersection(highYVector.GetX() + xSlope*yDistanceToTravel, 116.5, highYVector.GetZ() + zSlope*yDistanceToTravel);
+
+    if (yFaceIntersection.GetX() > 0.0 && yFaceIntersection.GetX() < 256.35 && yFaceIntersection.GetZ() > 0.0 && yFaceIntersection.GetZ() < 1036.8)
+        return true;
+    else 
+        return false;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 bool LArDirectionHelper::IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult) 
 {
     const pandora::CartesianVector initialPosition(fitResult.GetBeginpoint());

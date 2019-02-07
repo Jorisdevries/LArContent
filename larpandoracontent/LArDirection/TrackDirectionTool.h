@@ -239,6 +239,7 @@ public:
 
         void SetNHits(float numberHits);
         int GetNHits();
+        inline float GetEndpointFitChargeRatio(int numberHits);
         int GetDirectionEstimate();
 
         float GetMinChiSquared();
@@ -1070,6 +1071,21 @@ inline void TrackDirectionTool::DirectionFitObject::SetNHits(float numberHits)
 inline int TrackDirectionTool::DirectionFitObject::GetNHits()
 {
     return m_hitchargevector.size();
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline float TrackDirectionTool::DirectionFitObject::GetEndpointFitChargeRatio(int numberHits)
+{
+    float beginSummedFitCharge(0.f), endSummedFitCharge(0.f);
+
+    for int (i = 0; i < numberHits; ++i)
+    {
+        beginSummedFitCharge += m_hitchargevector.at(i);
+        endSummedFitCharge += m_hitchargevector.at(m_hitchargevector.size() - i - 1);
+    }
+
+    return (beginSummedFitCharge/endSummedFitCharge);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
