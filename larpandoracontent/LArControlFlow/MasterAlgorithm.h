@@ -144,20 +144,6 @@ private:
      */
     pandora::StatusCode TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosToX0Map, pandora::PfoList &clearCosmicRayPfos, pandora::PfoList &ambiguousPfos) const;
 
-    float GetAngleWithVector(const pandora::ParticleFlowObject* pPfo, pandora::CartesianVector &axisVector) const;
-
-    bool IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult) const;
-
-    bool HasFiducialLowY(TrackDirectionTool::DirectionFitObject &fitResult) const;
-
-    bool HasHighTopY(TrackDirectionTool::DirectionFitObject &fitResult, float threshold) const;
-
-    float CalculateCosmicProbability(TrackDirectionTool::DirectionFitObject &directionFit) const;
-
-    bool IsStoppingTopFaceMCParticle(const pandora::MCParticle* pMCParticle) const;
-
-    bool IsInFiducialVolume(pandora::CartesianVector positionVector) const;
-
     /**
      *  @brief  Run cosmic-ray hit removal, freeing hits in ambiguous pfos for further processing
      *

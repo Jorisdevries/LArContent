@@ -72,6 +72,35 @@ std::vector<CartesianVector> LArDirectionHelper::GetLowHighYPoints(const Pandora
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+std::vector<CartesianVector> LArDirectionHelper::GetLowHighZPoints(const pandora::Cluster* pCluster)
+{
+    OrderedCaloHitList orderedCaloHitList(pCluster->GetOrderedCaloHitList());
+    CaloHitList caloHitList;
+    orderedCaloHitList.FillCaloHitList(caloHitList);
+    CaloHitVector caloHitVector(caloHitList.begin(), caloHitList.end());
+
+    std::vector<CartesianVector> positions;
+
+    if (caloHitVector.size() == 0)
+        return positions;
+
+    //ascending order: front is low z
+    std::sort(caloHitVector.begin(), caloHitVector.end(), [](const pandora::CaloHit* const pCaloHit1, const pandora::CaloHit* const pCaloHit2){return pCaloHit1->GetPositionVector().GetZ() < pCaloHit2->GetPositionVector().GetZ();});
+
+    pandora::CartesianVector initialPosition(caloHitVector.front()->GetPositionVector());
+    pandora::CartesianVector endPosition(caloHitVector.back()->GetPositionVector());
+
+    pandora::CartesianVector lowZVector(initialPosition.GetZ() < endPosition.GetZ() ? initialPosition : endPosition);
+    pandora::CartesianVector highZVector(initialPosition.GetZ() > endPosition.GetZ() ? initialPosition : endPosition);
+
+    positions.push_back(lowZVector);
+    positions.push_back(highZVector);
+
+    return positions; 
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 bool LArDirectionHelper::IntersectsYFace(const Pandora &pandora, const pandora::ParticleFlowObject* pPfo)
 {
     std::vector<CartesianVector> positions(GetLowHighYPoints(pandora, pPfo));
@@ -95,7 +124,7 @@ bool LArDirectionHelper::IntersectsYFace(const Pandora &pandora, const pandora::
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-bool LArDirectionHelper::IntersectsYFace(const Pandora &pandora, pandora::CartesianVector &lowYVector, pandora::CartesianVector &highYVector)
+bool LArDirectionHelper::IntersectsYFace(const pandora::CartesianVector &lowYVector, const pandora::CartesianVector &highYVector)
 {
     float xExtent(highYVector.GetX() - lowYVector.GetX()), yExtent(highYVector.GetY() - lowYVector.GetY()), zExtent(highYVector.GetZ() - lowYVector.GetZ());
     float xSlope(xExtent/yExtent), zSlope(zExtent/yExtent);

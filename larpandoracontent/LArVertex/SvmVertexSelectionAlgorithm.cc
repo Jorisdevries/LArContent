@@ -14,6 +14,7 @@
 #include "larpandoracontent/LArHelpers/LArInteractionTypeHelper.h"
 #include "larpandoracontent/LArHelpers/LArMCParticleHelper.h"
 #include "larpandoracontent/LArHelpers/LArMvaHelper.h"
+#include "larpandoracontent/LArHelpers/LArDirectionHelper.h"
 
 #include "larpandoracontent/LArVertex/EnergyKickFeatureTool.h"
 #include "larpandoracontent/LArVertex/LocalAsymmetryFeatureTool.h"
@@ -1137,12 +1138,26 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVerticesSimple(const V
     VertexFeatureInfo chosenVertexFeatureInfo(vertexFeatureInfoMap.at(pBestVertex));
     this->AddVertexFeaturesToVector(chosenVertexFeatureInfo, chosenFeatureList, useRPhi, useDirection);
 
+    //direction-agnostic endpoints and probability in case direction fit fails
+    float probability(0.5), minChiSquaredPerHit(0.f);
     const auto pLongestCluster(m_pDirectionFlowProbabilityTool->GetLongestCluster(clusterList));
-    TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetClusterDirection(pLongestCluster);
-    float probability(directionFit.GetProbability());
+    const auto endPoints(LArDirectionHelper::GetLowHighZPoints(pLongestCluster));
+    pandora::CartesianVector beginPoint(endPoints.front()), endPoint(endPoints.back());
+    pandora::CartesianVector longestClusterDirection((endPoint - beginPoint).GetUnitVector());
 
-    const auto beginPoint(directionFit.GetBeginpoint()), endPoint(directionFit.GetEndpoint());
-    const auto longestClusterDirection((endPoint - beginPoint).GetUnitVector());
+    try
+    {
+        TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetClusterDirection(pLongestCluster);
+        probability = directionFit.GetProbability();
+        beginPoint = directionFit.GetBeginpoint();
+        endPoint = directionFit.GetEndpoint();
+        longestClusterDirection = (endPoint - beginPoint).GetUnitVector();
+        minChiSquaredPerHit = directionFit.GetMinChiSquaredPerHit();
+    }
+    catch (...)
+    {
+        std::cout << "Simple direction reweiguting unsuccesful." << std::endl;
+    }
 
     for (const Vertex *const pVertex : vertexVector)
     {
@@ -1162,7 +1177,7 @@ const pandora::Vertex * SvmVertexSelectionAlgorithm::ScoreVerticesSimple(const V
         float newVertexProbability(LArMvaHelper::CalculateProbability(supportVectorMachine, eventFeatureList, featureList, chosenFeatureList));
         float bestVertexProbability(LArMvaHelper::CalculateProbability(supportVectorMachine, eventFeatureList, chosenFeatureList, featureList));
 
-        if (directionFit.GetMinChiSquaredPerHit() >= 2.0)
+        if (minChiSquaredPerHit <= 2.0)
         {
             if (projection < 0)
                 newVertexProbability = probability;

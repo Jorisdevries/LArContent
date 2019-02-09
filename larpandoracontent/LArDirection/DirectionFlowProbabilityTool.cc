@@ -39,10 +39,17 @@ const pandora::Cluster* DirectionFlowProbabilityTool::GetLongestCluster(const pa
 
     for (const auto pCluster : clusterList)
     {
-        if (LArClusterHelper::GetLength(pCluster) > longestClusterLength)
+        try
         {
-            longestClusterLength = LArClusterHelper::GetLength(pCluster);
-            pLongestCluster = pCluster;
+            if (LArClusterHelper::GetLength(pCluster) > longestClusterLength)
+            {
+                longestClusterLength = LArClusterHelper::GetLength(pCluster);
+                pLongestCluster = pCluster;
+            }
+        }
+        catch (...)
+        {
+            continue;
         }
     }
 

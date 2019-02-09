@@ -31,9 +31,11 @@ public:
 
     static std::vector<pandora::CartesianVector> GetLowHighYPoints(const pandora::Pandora &pandora, const pandora::ParticleFlowObject* pPfo);
 
+    static std::vector<pandora::CartesianVector> GetLowHighZPoints(const pandora::Cluster* pCluster);
+
     static bool IntersectsYFace(const pandora::Pandora &pandora, const pandora::ParticleFlowObject* pPfo);
 
-    static bool IntersectsYFace(const Pandora &pandora, pandora::CartesianVector &lowYVector, pandora::CartesianVector &highYVector);
+    static bool IntersectsYFace(const pandora::CartesianVector &lowYVector, const pandora::CartesianVector &highYVector);
 
     static bool IntersectsYFace(TrackDirectionTool::DirectionFitObject &fitResult);
 

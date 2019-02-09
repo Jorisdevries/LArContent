@@ -1079,10 +1079,10 @@ inline float TrackDirectionTool::DirectionFitObject::GetEndpointFitChargeRatio(i
 {
     float beginSummedFitCharge(0.f), endSummedFitCharge(0.f);
 
-    for int (i = 0; i < numberHits; ++i)
+    for (int i = 0; i < numberHits; ++i)
     {
-        beginSummedFitCharge += m_hitchargevector.at(i);
-        endSummedFitCharge += m_hitchargevector.at(m_hitchargevector.size() - i - 1);
+        beginSummedFitCharge += m_hitchargevector.at(i).GetChargeOverWidth();
+        endSummedFitCharge += m_hitchargevector.at(m_hitchargevector.size() - i - 1).GetChargeOverWidth();
     }
 
     return (beginSummedFitCharge/endSummedFitCharge);
