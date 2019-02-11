@@ -395,10 +395,6 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
         if (m_recoTopFaceCosmicRemoval || m_writeToTree)
         {
             const auto pMCParticle(LArMCParticleHelper::GetMainMCParticle(pPfo));
-
-            if (pMCParticle->GetParticleId() != 13)
-                continue;
-
             const bool isTrueCosmicRay(LArMCParticleHelper::IsCosmicRay(pMCParticle));
 
             const pandora::CartesianVector lowYVector(pMCParticle->GetVertex().GetY() < pMCParticle->GetEndpoint().GetY() ? pMCParticle->GetVertex() : pMCParticle->GetEndpoint());
@@ -430,6 +426,11 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                 pfoHighTopY = (correctedPfoHighYVector.GetY() >= 100.0 ? true : false); 
                 isTargetTopFacePfo = (pfoHighTopY && pfoIntersectsTopFace && pfoFiducialLowY);
 
+                pandora::HitType view3D(TPC_3D), viewW(TPC_VIEW_W);
+                pandora::CaloHitList hits3D, hitsW;
+                LArPfoHelper::GetCaloHits(pPfo, view3D, hits3D);
+                LArPfoHelper::GetCaloHits(pPfo, viewW, hits3D);
+
                 if (pfoIntersectsTopFace && pfoFiducialLowY && pfoHighTopY)
                     eventContainsTargetPfo = true;
                 if (isTargetCosmic)
@@ -452,6 +453,9 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                 }
                 */
 
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "SufficientThreeDHits", hits3D.size() >= 50 ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "NumberThreeDHits", static_cast<int>(hits3D.size())));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "NumberWHits", static_cast<int>(hitsW.size())));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "RemovedByRegularTagging", removedByRegularTagging ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCPDG", pMCParticle->GetParticleId()));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "FitEndpointEnergy", fitEndpointEnergy));
@@ -496,7 +500,7 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
 
         PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
         const float x0Shift((pfoToX0Iter != stitchedPfosToX0Map.end()) ? pfoToX0Iter->second : 0.f);
-        PfoList &targetList(((std::fabs(x0Shift) > m_inTimeMaxX0) || (m_cheatTopFaceCosmicRemoval && isTargetCosmic) || (m_recoTopFaceCosmicRemoval && pfoFiducialLowY && pfoHighTopY && pfoIntersectsTopFace && deltaChiSquaredUpDownPerHit <= -0.25)) ? clearCosmicRayPfos : nonStitchedParentCosmicRayPfos);
+        PfoList &targetList(((std::fabs(x0Shift) > m_inTimeMaxX0) || (m_cheatTopFaceCosmicRemoval && isTargetCosmic) || (m_recoTopFaceCosmicRemoval && isTargetTopFacePfo && deltaChiSquaredUpDownPerHit <= -0.25)) ? clearCosmicRayPfos : nonStitchedParentCosmicRayPfos);
         targetList.push_back(pPfo);
 
     }
