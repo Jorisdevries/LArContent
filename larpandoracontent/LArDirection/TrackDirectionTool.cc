@@ -38,7 +38,7 @@ namespace lar_content
 
 TrackDirectionTool::TrackDirectionTool() :
     m_slidingFitWindow(5),
-    m_minClusterCaloHits(10),
+    m_minClusterCaloHits(25),
     m_minClusterLength(5.f),
     m_numberTrackEndHits(100000),
     m_endpointProtectionFraction(0.05),
@@ -69,7 +69,7 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
 {
     try
     {
-        if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || LArClusterHelper::GetLength(pTargetClusterW) < m_minClusterLength)
+        if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || pTargetClusterW->GetOrderedCaloHitList().size() > 5000)
         {
             //std::cout << "Direction fit error: invalid cluster" << std::endl;
             throw STATUS_CODE_FAILURE;
@@ -136,7 +136,7 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
 {
     try
     {
-        if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || LArClusterHelper::GetLength(pTargetClusterW) < m_minClusterLength)
+        if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || pTargetClusterW->GetOrderedCaloHitList().size() > 5000)
         {
             //std::cout << "Direction fit error: invalid cluster" << std::endl;
             throw STATUS_CODE_FAILURE;
@@ -466,12 +466,37 @@ void TrackDirectionTool::TrackInnerFilter(HitChargeVector &hitChargeVector, HitC
     //Fill endpoint protected area into filtered vector and put all other hits in a separate vector
     float endpointProtectionRange(m_endpointProtectionFraction);
 
-    filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(),  hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size());
-    filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size(), hitChargeVector.end());
+    HitChargeVector leftEndpoint(hitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()));
+    HitChargeVector rightEndpoint(std::next(hitChargeVector.begin(), (1.0 - endpointProtectionRange) * hitChargeVector.size()), hitChargeVector.end());
 
-    HitChargeVector innerHitChargeVector(hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size());
+    float leftCharge(0.f), rightCharge(0.f);
 
-    if (innerHitChargeVector.size() < 5)
+    for (const auto &hitCharge : leftEndpoint)
+        leftCharge += hitCharge.GetChargeOverWidth();
+
+    for (const auto &hitCharge : rightEndpoint)
+        rightCharge += hitCharge.GetChargeOverWidth();
+
+    HitChargeVector innerHitChargeVector;
+
+    //protect the endpoint with the largest average charge
+    if (rightCharge >= leftCharge)
+    {
+        filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size(), hitChargeVector.end());
+        innerHitChargeVector.insert(innerHitChargeVector.begin(), hitChargeVector.begin(), std::next(hitChargeVector.begin(), (1.0 - endpointProtectionRange) * hitChargeVector.size()));
+    }
+    else
+    {
+        filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()));
+        innerHitChargeVector.insert(innerHitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()), hitChargeVector.end());
+    }
+
+    //filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(),  hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size());
+    //filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size(), hitChargeVector.end());
+
+    //HitChargeVector innerHitChargeVector(hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size());
+
+    if (innerHitChargeVector.size() < 10)
     {
         filteredHitChargeVector = hitChargeVector;
         return;

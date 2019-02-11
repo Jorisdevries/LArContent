@@ -435,6 +435,11 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                 if (isTargetCosmic)
                     eventContainsTrueTargetCR = true;
 
+                //whether this particular cosmic would have been removed based on out-of-time information
+                PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
+                const float x0Shift((pfoToX0Iter != stitchedPfosToX0Map.end()) ? pfoToX0Iter->second : 0.f);
+                bool removedByRegularTagging(std::fabs(x0Shift) > m_inTimeMaxX0);
+
                 /*
                 //event 1185:2 is an example where endpoint filtering helps
                 std::cout << ">>>>>>>>>>>>> deltaChiSquaredUpDownPerHit: " << deltaChiSquaredUpDownPerHit << std::endl;
@@ -447,6 +452,7 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                 }
                 */
 
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "RemovedByRegularTagging", removedByRegularTagging));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCPDG", pMCParticle->GetParticleId()));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "FitEndpointEnergy", fitEndpointEnergy));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "EndpointFitChargeRatio", endpointFitChargeRatio));

@@ -216,7 +216,7 @@ StatusCode VertexSelectionBaseAlgorithm::Run()
 
     this->SelectTopScoreVertices(vertexScoreList, selectedVertexList);
 
-    std::cout << ">>>>>>>>>>>>>>>>>> RUNNING" << std::endl;
+    //std::cout << ">>>>>>>>>>>>>>>>>> RUNNING" << std::endl;
 
     if (m_writeToTree)
         this->WriteVertexInformation(pInputVertexList, pMCParticleList, filteredVertices, selectedVertexList);
@@ -242,7 +242,7 @@ void VertexSelectionBaseAlgorithm::WriteVertexInformation(const pandora::VertexL
     float deltaR(this->GetVertexDR(pMCParticleList, selectedVertexList.front(), true));
     float deltaRMin(1e6);
 
-    std::cout << "Vertex Delta R: " << deltaR << std::endl;
+    //std::cout << "Vertex Delta R: " << deltaR << std::endl;
 
     for (const auto pVertex: *pInputVertexList)
     {
