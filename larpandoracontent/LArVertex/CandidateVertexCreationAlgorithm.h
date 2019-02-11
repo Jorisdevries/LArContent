@@ -72,9 +72,7 @@ private:
 
     void CreatePositions(pandora::CaloHitVector &caloHitVector, std::vector<pandora::CartesianVector> &positions);
 
-    pandora::CaloHitVector GetLowestZHits(const pandora::ClusterVector &clusterVector);
-
-    static bool SortHitsByZ(const pandora::CaloHit* const pCaloHit1, const pandora::CaloHit* const pCaloHit2);
+    pandora::CaloHitVector GetExtremalZHits(const pandora::ClusterVector &clusterVector, int &nHitsToConsider, bool createLowZCandidates);
 
     void CreateVertex(pandora::HitType hitType1, pandora::HitType hitType2, pandora::CartesianVector position1, pandora::CartesianVector position2);
 

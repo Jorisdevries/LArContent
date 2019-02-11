@@ -452,7 +452,7 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                 }
                 */
 
-                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "RemovedByRegularTagging", removedByRegularTagging));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "RemovedByRegularTagging", removedByRegularTagging ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCPDG", pMCParticle->GetParticleId()));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "FitEndpointEnergy", fitEndpointEnergy));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "EndpointFitChargeRatio", endpointFitChargeRatio));

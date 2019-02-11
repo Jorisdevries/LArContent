@@ -353,15 +353,33 @@ void CandidateVertexCreationAlgorithm::CreateZCandidates(const ClusterVector &cl
 {
     std::cout << "Z candidates are enabled" << std::endl;
 
-    CaloHitVector lowestZHitsU(this->GetLowestZHits(clusterVectorU));
-    CaloHitVector lowestZHitsV(this->GetLowestZHits(clusterVectorV));
-    CaloHitVector lowestZHitsW(this->GetLowestZHits(clusterVectorW));
+    int nHitsToConsider(5);
+
+    CaloHitVector lowestZHitsU(this->GetExtremalZHits(clusterVectorU, nHitsToConsider, true));
+    CaloHitVector lowestZHitsV(this->GetExtremalZHits(clusterVectorV, nHitsToConsider, true));
+    CaloHitVector lowestZHitsW(this->GetExtremalZHits(clusterVectorW, nHitsToConsider, true));
+
+    CaloHitVector highestZHitsU(this->GetExtremalZHits(clusterVectorU, nHitsToConsider, false));
+    CaloHitVector highestZHitsV(this->GetExtremalZHits(clusterVectorV, nHitsToConsider, false));
+    CaloHitVector highestZHitsW(this->GetExtremalZHits(clusterVectorW, nHitsToConsider, false));
 
     std::vector<CartesianVector> positionsU, positionsV, positionsW;
 
     this->CreatePositions(lowestZHitsU, positionsU);
     this->CreatePositions(lowestZHitsV, positionsV);
     this->CreatePositions(lowestZHitsW, positionsW);
+
+    this->CreateVertices(TPC_VIEW_U, TPC_VIEW_V, positionsU, positionsV);
+    this->CreateVertices(TPC_VIEW_U, TPC_VIEW_W, positionsU, positionsW);
+    this->CreateVertices(TPC_VIEW_V, TPC_VIEW_W, positionsV, positionsW);
+
+    positionsU.clear();
+    positionsV.clear();
+    positionsW.clear();
+
+    this->CreatePositions(highestZHitsU, positionsU);
+    this->CreatePositions(highestZHitsV, positionsV);
+    this->CreatePositions(highestZHitsW, positionsW);
 
     this->CreateVertices(TPC_VIEW_U, TPC_VIEW_V, positionsU, positionsV);
     this->CreateVertices(TPC_VIEW_U, TPC_VIEW_W, positionsU, positionsW);
@@ -383,28 +401,13 @@ void CandidateVertexCreationAlgorithm::CreateVertices(HitType hitType1, HitType 
 
 void CandidateVertexCreationAlgorithm::CreatePositions(CaloHitVector &caloHitVector, std::vector<CartesianVector> &positions)
 {
-    /*
-    float max_drift(5.f);
-
-    for (const auto pCaloHit : caloHitVector)
-    {
-        CartesianVector position(pCaloHit->GetPositionVector());
-
-        for (float x_drift = -max_drift; x_drift <= max_drift; x_drift += 0.5)
-        {
-            CartesianVector position1(position.GetX() + x_drift, position.GetY(), position.GetZ());
-            positions.push_back(position1);
-        }
-    }
-    */
-
     for (const auto pCaloHit : caloHitVector)
         positions.push_back(pCaloHit->GetPositionVector());
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-pandora::CaloHitVector CandidateVertexCreationAlgorithm::GetLowestZHits(const ClusterVector &clusterVector)
+pandora::CaloHitVector CandidateVertexCreationAlgorithm::GetExtremalZHits(const ClusterVector &clusterVector, int &nHitsToConsider, bool createLowZCandidates)
 {
     pandora::CaloHitVector caloHitVector;
 
@@ -418,10 +421,12 @@ pandora::CaloHitVector CandidateVertexCreationAlgorithm::GetLowestZHits(const Cl
             caloHitVector.push_back(pCaloHit);
     }
 
-    std::sort(caloHitVector.begin(), caloHitVector.end(), SortHitsByZ);
-    pandora::CaloHitVector caloHitVectorSubset;
+    std::sort(caloHitVector.begin(), caloHitVector.end(), [](const pandora::CaloHit* const pCaloHit1, const pandora::CaloHit* const pCaloHit2){return pCaloHit1->GetPositionVector().GetZ() < pCaloHit2->GetPositionVector().GetZ();});
 
-    int nHitsToConsider(5);
+    if (!createLowZCandidates)
+        std::sort(caloHitVector.begin(), caloHitVector.end(), [](const pandora::CaloHit* const pCaloHit1, const pandora::CaloHit* const pCaloHit2){return pCaloHit1->GetPositionVector().GetZ() > pCaloHit2->GetPositionVector().GetZ();});
+
+    pandora::CaloHitVector caloHitVectorSubset;
 
     if (caloHitVector.size() < nHitsToConsider)
         caloHitVectorSubset.insert(caloHitVectorSubset.begin(), caloHitVector.begin(), caloHitVector.end());
@@ -429,13 +434,6 @@ pandora::CaloHitVector CandidateVertexCreationAlgorithm::GetLowestZHits(const Cl
         caloHitVectorSubset.insert(caloHitVectorSubset.begin(), caloHitVector.begin(), caloHitVector.begin() + (nHitsToConsider - 1));
 
     return caloHitVectorSubset;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-bool CandidateVertexCreationAlgorithm::SortHitsByZ(const pandora::CaloHit* const pCaloHit1, const pandora::CaloHit* const pCaloHit2)
-{
-    return pCaloHit1->GetPositionVector().GetZ() < pCaloHit2->GetPositionVector().GetZ();
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
