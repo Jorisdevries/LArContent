@@ -465,30 +465,37 @@ void TrackDirectionTool::TrackInnerFilter(HitChargeVector &hitChargeVector, HitC
 {
     //Fill endpoint protected area into filtered vector and put all other hits in a separate vector
     float endpointProtectionRange(m_endpointProtectionFraction);
-
-    HitChargeVector leftEndpoint(hitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()));
-    HitChargeVector rightEndpoint(std::next(hitChargeVector.begin(), (1.0 - endpointProtectionRange) * hitChargeVector.size()), hitChargeVector.end());
-
-    float leftCharge(0.f), rightCharge(0.f);
-
-    for (const auto &hitCharge : leftEndpoint)
-        leftCharge += hitCharge.GetChargeOverWidth();
-
-    for (const auto &hitCharge : rightEndpoint)
-        rightCharge += hitCharge.GetChargeOverWidth();
-
     HitChargeVector innerHitChargeVector;
 
-    //protect the endpoint with the largest average charge
-    if (rightCharge >= leftCharge)
+    if (endpointProtectionRange != 0.f)
     {
-        filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size(), hitChargeVector.end());
-        innerHitChargeVector.insert(innerHitChargeVector.begin(), hitChargeVector.begin(), std::next(hitChargeVector.begin(), (1.0 - endpointProtectionRange) * hitChargeVector.size()));
+        HitChargeVector leftEndpoint(hitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()));
+        HitChargeVector rightEndpoint(std::next(hitChargeVector.begin(), (1.0 - endpointProtectionRange) * hitChargeVector.size()), hitChargeVector.end());
+
+        float leftCharge(0.f), rightCharge(0.f);
+
+        for (const auto &hitCharge : leftEndpoint)
+            leftCharge += hitCharge.GetChargeOverWidth();
+
+        for (const auto &hitCharge : rightEndpoint)
+            rightCharge += hitCharge.GetChargeOverWidth();
+
+
+        //protect the endpoint with the largest average charge
+        if (rightCharge >= leftCharge)
+        {
+            filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin() + (1.0 - endpointProtectionRange) * hitChargeVector.size(), hitChargeVector.end());
+            innerHitChargeVector.insert(innerHitChargeVector.begin(), hitChargeVector.begin(), std::next(hitChargeVector.begin(), (1.0 - endpointProtectionRange) * hitChargeVector.size()));
+        }
+        else
+        {
+            filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()));
+            innerHitChargeVector.insert(innerHitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()), hitChargeVector.end());
+        }
     }
     else
     {
-        filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()));
-        innerHitChargeVector.insert(innerHitChargeVector.begin(), std::next(hitChargeVector.begin(), endpointProtectionRange * hitChargeVector.size()), hitChargeVector.end());
+        innerHitChargeVector = hitChargeVector;
     }
 
     //filteredHitChargeVector.insert(filteredHitChargeVector.begin(), hitChargeVector.begin(),  hitChargeVector.begin() + endpointProtectionRange * hitChargeVector.size());

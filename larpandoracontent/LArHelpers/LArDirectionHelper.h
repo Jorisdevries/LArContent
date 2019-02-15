@@ -48,6 +48,14 @@ public:
     static bool IsStoppingTopFaceMCParticle(const pandora::MCParticle* pMCParticle);
 
     static bool IsInFiducialVolume(pandora::CartesianVector positionVector);
+
+    static pandora::CartesianVector GetApproximateNeutrinoMomentum(const pandora::Pandora &pandora, pandora::PfoList pfoList, const pandora::ParticleFlowObject* pLongestPfo);
+
+    static pandora::CartesianVector GetApproximatePfoMomentum(const pandora::Pandora &pandora, const pandora::ParticleFlowObject* pPfo, const float &particleMass);
+
+    static float GetPfoCharge(const pandora::ParticleFlowObject* pPfo); 
+
+    static void GetClusterHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList); 
 };
 
 } // namespace lar_content

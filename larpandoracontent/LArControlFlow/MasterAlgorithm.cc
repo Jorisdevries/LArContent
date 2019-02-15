@@ -389,8 +389,25 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
         if (!pPfo->GetParentPfoList().empty())
             continue;
 
-        float pfoCosmicProbability(0.f), deltaChiSquaredUpDownPerHit(0.f), deltaChiSquaredUpDown(0.f), pfoPolarAngle(0.f);
-        bool isTargetTopFacePfo(false), pfoIntersectsTopFace(false), pfoFiducialLowY(false), pfoHighTopY(false), isTargetCosmic(false);
+        PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
+        const float x0Shift((pfoToX0Iter != stitchedPfosToX0Map.end()) ? pfoToX0Iter->second : 0.f);
+        PfoList &targetList((std::fabs(x0Shift) > m_inTimeMaxX0) ? clearCosmicRayPfos : nonStitchedParentCosmicRayPfos);
+        targetList.push_back(pPfo);
+    }
+
+    for (CosmicRayTaggingBaseTool *const pCosmicRayTaggingTool : m_cosmicRayTaggingToolVector)
+        pCosmicRayTaggingTool->FindAmbiguousPfos(nonStitchedParentCosmicRayPfos, ambiguousPfos, this);
+
+    for (const Pfo *const pPfo : nonStitchedParentCosmicRayPfos)
+    {
+        if (ambiguousPfos.end() == std::find(ambiguousPfos.begin(), ambiguousPfos.end(), pPfo))
+            clearCosmicRayPfos.push_back(pPfo);
+    }
+
+    for (const Pfo *const pPfo : *pRecreatedCRPfos)
+    {
+        if (!pPfo->GetParentPfoList().empty())
+            continue;
         
         if (m_recoTopFaceCosmicRemoval || m_writeToTree)
         {
@@ -402,29 +419,30 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
 
             const bool mcFiducialLowY(LArDirectionHelper::IsInFiducialVolume(lowYVector));
             const bool mcIntersectsTopFace(highYVector.GetZ() > 116.5 && LArDirectionHelper::IntersectsYFace(lowYVector, highYVector));
-            isTargetCosmic = (isTrueCosmicRay && mcFiducialLowY && mcIntersectsTopFace);
+            const bool isTargetCosmic = (isTrueCosmicRay && mcFiducialLowY && mcIntersectsTopFace);
 
             try
             {
-                CartesianVector yAxis(0.f, 1.f, 0.f);
-                pfoPolarAngle = LArDirectionHelper::GetAngleWithVector(this->GetPandora(), pPfo, yAxis);
+                CartesianVector yAxis(0.f, 1.f, 0.f), zAxis(0.f, 0.f, 1.f);
+                float pfoPolarAngle = LArDirectionHelper::GetAngleWithVector(this->GetPandora(), pPfo, yAxis);
+                float pfoAzimuthalAngle = LArDirectionHelper::GetAngleWithVector(this->GetPandora(), pPfo, zAxis);
 
                 TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetPfoDirection(pPfo);
                 float fitEndpointEnergy(directionFit.GetFitParameters().GetParameterZero());
                 float endpointFitChargeRatio(directionFit.GetEndpointFitChargeRatio(5));
 
-                pfoCosmicProbability = LArDirectionHelper::CalculateCosmicProbability(directionFit);
-                deltaChiSquaredUpDownPerHit = directionFit.GetUpDownDeltaChiSquaredPerHit();
-                deltaChiSquaredUpDown = directionFit.GetUpDownDeltaChiSquared();
+                float pfoCosmicProbability = LArDirectionHelper::CalculateCosmicProbability(directionFit);
+                float deltaChiSquaredUpDownPerHit = directionFit.GetUpDownDeltaChiSquaredPerHit();
+                float deltaChiSquaredUpDown = directionFit.GetUpDownDeltaChiSquared();
 
                 std::vector<pandora::CartesianVector> lowHighYPositions(LArDirectionHelper::GetLowHighYPoints(this->GetPandora(), pPfo));
                 pandora::CartesianVector correctedPfoLowYVector(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(lowHighYPositions.at(0)));
                 pandora::CartesianVector correctedPfoHighYVector(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(lowHighYPositions.at(1)));
 
-                pfoIntersectsTopFace = LArDirectionHelper::IntersectsYFace(correctedPfoLowYVector, correctedPfoHighYVector);
-                pfoFiducialLowY = LArDirectionHelper::IsInFiducialVolume(correctedPfoLowYVector);
-                pfoHighTopY = (correctedPfoHighYVector.GetY() >= 100.0 ? true : false); 
-                isTargetTopFacePfo = (pfoHighTopY && pfoIntersectsTopFace && pfoFiducialLowY);
+                bool pfoIntersectsTopFace = LArDirectionHelper::IntersectsYFace(correctedPfoLowYVector, correctedPfoHighYVector);
+                bool pfoFiducialLowY = LArDirectionHelper::IsInFiducialVolume(correctedPfoLowYVector);
+                bool pfoHighTopY = (correctedPfoHighYVector.GetY() >= 100.0 ? true : false); 
+                bool isTargetTopFacePfo = (pfoHighTopY && pfoIntersectsTopFace && pfoFiducialLowY);
 
                 pandora::HitType view3D(TPC_3D), viewW(TPC_VIEW_W);
                 pandora::CaloHitList hits3D, hitsW;
@@ -437,9 +455,13 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                     eventContainsTrueTargetCR = true;
 
                 //whether this particular cosmic would have been removed based on out-of-time information
-                PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
-                const float x0Shift((pfoToX0Iter != stitchedPfosToX0Map.end()) ? pfoToX0Iter->second : 0.f);
-                bool removedByRegularTagging(std::fabs(x0Shift) > m_inTimeMaxX0);
+                bool removedByRegularTagging(false);
+
+                if (clearCosmicRayPfos.end() != std::find(clearCosmicRayPfos.begin(), clearCosmicRayPfos.end(), pPfo))
+                    removedByRegularTagging = true;
+
+                pandora::PfoList connectedPfoList;
+                LArPfoHelper::GetAllConnectedPfos(pPfo, connectedPfoList);
 
                 /*
                 //event 1185:2 is an example where endpoint filtering helps
@@ -453,12 +475,19 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                 }
                 */
 
+                pandora::CartesianVector neutrinoMomentum(LArDirectionHelper::GetApproximateNeutrinoMomentum(this->GetPandora(), connectedPfoList, pPfo));
+
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "ApproximateNeutrinoMomentumX", neutrinoMomentum.GetX()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "ApproximateNeutrinoMomentumY", neutrinoMomentum.GetY()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "ApproximateNeutrinoMomentumZ", neutrinoMomentum.GetZ()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "NumberConnectedPfos", static_cast<int>(connectedPfoList.size())));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "SufficientThreeDHits", hits3D.size() >= 50 ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "NumberThreeDHits", static_cast<int>(hits3D.size())));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "NumberWHits", static_cast<int>(hitsW.size())));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "RemovedByRegularTagging", removedByRegularTagging ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCPDG", pMCParticle->GetParticleId()));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "FitEndpointEnergy", fitEndpointEnergy));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "FitEndpointEnergyIsSmall", fitEndpointEnergy <= 45.0 ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "EndpointFitChargeRatio", endpointFitChargeRatio));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCTargetCosmic", isTargetCosmic ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "MCCosmicRay", isTrueCosmicRay ? 1 : 0));
@@ -473,12 +502,17 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighTopY", pfoHighTopY ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoSuperHighTopY", correctedPfoHighYVector.GetY() >= 115.5 ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoPolarAngle", pfoPolarAngle));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoPolarAngleIsSmall", pfoPolarAngle <= 1.0 ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoPolarAngleIsSomewhatSmall", pfoPolarAngle <= 1.2 ? 1 : 0));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoAzimuthalAngle", pfoAzimuthalAngle));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoPolarAngleCriteriaMet", (pfoPolarAngle < 3.1415/2.0 && correctedPfoHighYVector.GetZ() > correctedPfoLowYVector.GetZ()) ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "HighYZLargerThanLowYZ", correctedPfoHighYVector.GetZ() > correctedPfoLowYVector.GetZ() ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoLowY", correctedPfoLowYVector.GetY()));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighY", correctedPfoHighYVector.GetY()));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoLowYEndpointZ", correctedPfoLowYVector.GetZ()));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoHighYEndpointZ", correctedPfoHighYVector.GetZ()));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoDeltaZ", (correctedPfoHighYVector.GetZ() - correctedPfoLowYVector.GetZ())));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "PfoDeltaZIsSmall", (correctedPfoHighYVector.GetZ() - correctedPfoLowYVector.GetZ()) <= 50.0 ? 1 : 0));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TruePfoPolarAngle", (pMCParticle->GetEndpoint() - pMCParticle->GetVertex()).GetOpeningAngle(yAxis)));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TrueExtent", (pMCParticle->GetEndpoint() - pMCParticle->GetVertex()).GetMagnitude()));
                 PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "TopFaceCosmicRemoval", "TrueDownwards", pMCParticle->GetEndpoint().GetY() < pMCParticle->GetVertex().GetY() ? 1 : 0 ));
@@ -497,21 +531,6 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                 //continue;
             }
         }
-
-        PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
-        const float x0Shift((pfoToX0Iter != stitchedPfosToX0Map.end()) ? pfoToX0Iter->second : 0.f);
-        PfoList &targetList(((std::fabs(x0Shift) > m_inTimeMaxX0) || (m_cheatTopFaceCosmicRemoval && isTargetCosmic) || (m_recoTopFaceCosmicRemoval && isTargetTopFacePfo && deltaChiSquaredUpDownPerHit <= -0.25)) ? clearCosmicRayPfos : nonStitchedParentCosmicRayPfos);
-        targetList.push_back(pPfo);
-
-    }
-
-    for (CosmicRayTaggingBaseTool *const pCosmicRayTaggingTool : m_cosmicRayTaggingToolVector)
-        pCosmicRayTaggingTool->FindAmbiguousPfos(nonStitchedParentCosmicRayPfos, ambiguousPfos, this);
-
-    for (const Pfo *const pPfo : nonStitchedParentCosmicRayPfos)
-    {
-        if (ambiguousPfos.end() == std::find(ambiguousPfos.begin(), ambiguousPfos.end(), pPfo))
-            clearCosmicRayPfos.push_back(pPfo);
     }
 
     if (m_visualizeOverallRecoStatus)

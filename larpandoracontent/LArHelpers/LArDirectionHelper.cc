@@ -256,4 +256,82 @@ bool LArDirectionHelper::IsInFiducialVolume(pandora::CartesianVector positionVec
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+pandora::CartesianVector LArDirectionHelper::GetApproximateNeutrinoMomentum(const Pandora &pandora, pandora::PfoList pfoList, const pandora::ParticleFlowObject* pLongestPfo)
+{
+    const float muonMass(105.7), protonMass(938.3);
+    CartesianVector muonMomentum(GetApproximatePfoMomentum(pandora, pLongestPfo, muonMass)); 
+
+    pandora::CartesianVector neutrinoMomentum = muonMomentum;
+
+    for (const auto pPfo : pfoList)
+    {    
+        if (pPfo == pLongestPfo)
+            continue;
+
+        try  
+        {    
+            pandora::CartesianVector protonMomentum(GetApproximatePfoMomentum(pandora, pPfo, protonMass)); 
+            neutrinoMomentum += protonMomentum; 
+        }    
+        catch (...)
+        {    
+            continue;
+        }    
+    }    
+   
+    return neutrinoMomentum.GetUnitVector(); 
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::CartesianVector LArDirectionHelper::GetApproximatePfoMomentum(const Pandora &pandora, const pandora::ParticleFlowObject* pPfo, const float &particleMass)
+{
+    LArTrackStateVector trackStateVector; 
+    LArPfoHelper::GetSlidingFitTrajectory(pPfo, LArPfoHelper::GetVertex(pPfo), 20, LArGeometryHelper::GetWireZPitch(pandora), trackStateVector);
+
+    if (trackStateVector.size() == 0)
+    {    
+        CartesianVector dummyVector(1.f, 1.f, 1.f);
+        return dummyVector;
+    }    
+
+    const pandora::CartesianVector particleDirection(trackStateVector.front().GetDirection().GetUnitVector());
+    float particleCharge(GetPfoCharge(pPfo));
+
+    const float adcToMeV(0.0000236 * 197 * (1.0/0.62));
+    const float momentumNorm(std::sqrt(adcToMeV * adcToMeV * particleCharge * particleCharge + 2 * adcToMeV * particleCharge * particleMass));
+
+    pandora::CartesianVector particleMomentum(particleDirection.GetX() * momentumNorm, particleDirection.GetY() * momentumNorm, particleDirection.GetZ() * momentumNorm);
+    return particleMomentum;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float LArDirectionHelper::GetPfoCharge(const pandora::ParticleFlowObject* pPfo)
+{
+    float pfoTotalCharge(0.f);
+
+    pandora::PfoList pfoList;
+    pfoList.insert(pfoList.begin(), pPfo);
+
+    pandora::CaloHitList pfoHitList;
+    GetClusterHits(pfoList, pfoHitList);
+
+    for (const auto pCaloHit : pfoHitList)
+        pfoTotalCharge += pCaloHit->GetInputEnergy();
+
+    return pfoTotalCharge;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void LArDirectionHelper::GetClusterHits(pandora::PfoList &pfoList, pandora::CaloHitList &caloHitList)
+{
+    LArPfoHelper::GetCaloHits(pfoList, TPC_VIEW_U, caloHitList);
+    LArPfoHelper::GetCaloHits(pfoList, TPC_VIEW_V, caloHitList);
+    LArPfoHelper::GetCaloHits(pfoList, TPC_VIEW_W, caloHitList);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 } // namespace lar_content
