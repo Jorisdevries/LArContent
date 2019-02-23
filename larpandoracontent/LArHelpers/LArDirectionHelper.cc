@@ -256,21 +256,40 @@ bool LArDirectionHelper::IsInFiducialVolume(pandora::CartesianVector positionVec
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-pandora::CartesianVector LArDirectionHelper::GetApproximateNeutrinoMomentum(const Pandora &pandora, pandora::PfoList pfoList, const pandora::ParticleFlowObject* pLongestPfo)
+bool LArDirectionHelper::IsInSimpleFiducialVolume(pandora::CartesianVector positionVector)
+{
+    if ((positionVector.GetX() > 10.0 && positionVector.GetX() < (256.35 - 10.0)) && (positionVector.GetY() > (-116.5 + 20.0) && positionVector.GetY() < (116.5 - 20.0)) && (positionVector.GetZ() > 10.0 && positionVector.GetZ() < 1036.8 - 10.0))
+        return true;
+    else 
+        return false;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::CartesianVector LArDirectionHelper::GetApproximateNeutrinoMomentum(const Pandora &pandora, pandora::PfoList connectedPfos, const pandora::ParticleFlowObject* pLongestPfo)
 {
     const float muonMass(105.7), protonMass(938.3);
     CartesianVector muonMomentum(GetApproximatePfoMomentum(pandora, pLongestPfo, muonMass)); 
 
     pandora::CartesianVector neutrinoMomentum = muonMomentum;
 
-    for (const auto pPfo : pfoList)
+    std::vector<pandora::CartesianVector> lowHighYPositions(LArDirectionHelper::GetLowHighYPoints(pandora, pLongestPfo));
+    pandora::CartesianVector pfoLowYVector(lowHighYPositions.at(0));
+    pandora::CartesianVector pfoHighYVector(lowHighYPositions.at(1));
+
+    for (const auto pConnectedPfo : connectedPfos)
     {    
-        if (pPfo == pLongestPfo)
+        if (pConnectedPfo == pLongestPfo)
+            continue;
+
+         const pandora::CartesianVector pfoVertexPosition(LArPfoHelper::GetVertex(pConnectedPfo)->GetPosition());
+
+         if ((pfoVertexPosition - pfoLowYVector).GetMagnitude() >= 5.0 && (pfoVertexPosition - pfoHighYVector).GetMagnitude() >= 5.0)
             continue;
 
         try  
         {    
-            pandora::CartesianVector protonMomentum(GetApproximatePfoMomentum(pandora, pPfo, protonMass)); 
+            pandora::CartesianVector protonMomentum(GetApproximatePfoMomentum(pandora, pConnectedPfo, protonMass)); 
             neutrinoMomentum += protonMomentum; 
         }    
         catch (...)
@@ -316,6 +335,24 @@ float LArDirectionHelper::GetPfoCharge(const pandora::ParticleFlowObject* pPfo)
 
     pandora::CaloHitList pfoHitList;
     GetClusterHits(pfoList, pfoHitList);
+
+    for (const auto pCaloHit : pfoHitList)
+        pfoTotalCharge += pCaloHit->GetInputEnergy();
+
+    return pfoTotalCharge;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float LArDirectionHelper::GetPfoChargeW(const pandora::ParticleFlowObject* pPfo)
+{
+    float pfoTotalCharge(0.f);
+
+    pandora::PfoList pfoList;
+    pfoList.insert(pfoList.begin(), pPfo);
+
+    pandora::CaloHitList pfoHitList;
+    LArPfoHelper::GetCaloHits(pfoList, TPC_VIEW_W, pfoHitList);
 
     for (const auto pCaloHit : pfoHitList)
         pfoTotalCharge += pCaloHit->GetInputEnergy();

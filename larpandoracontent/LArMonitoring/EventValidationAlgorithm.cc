@@ -845,45 +845,22 @@ void EventValidationAlgorithm::WriteNeutrinoIdCheck(const pandora::MCParticleLis
     LArPfoHelper::GetRecoNeutrinos(pPfoList, neutrinoPfos);
     LArPfoHelper::GetAllDownstreamPfos(neutrinoPfos, connectedPfos);
 
-    bool eventContainsTargetPfo(false), eventContainsTrueTargetCR(false);
-    int nuRecoIsTargetPfo(-1), nuRecoIsTrueTargetCR(-1), nuRecoTrueCosmicRay(-1), nuRecoIntersectsTopFace(-1), nuRecoFiducialLowY(-1), nuRecoHighTopY(-1);
-    float nuRecoPolarAngle(-1.f);
+    int nuRecoTrueCosmicRay(-1);
 
     float longestNeutrinoPfoLength(0.f);
 
-    for (const Pfo *const pPfo : *pPfoList)
+    for (const Pfo *const pPfo : connectedPfos)
     {
         try
         {
             const auto pMCParticle(LArMCParticleHelper::GetMainMCParticle(pPfo));
             const bool isTrueCosmicRay(LArMCParticleHelper::IsCosmicRay(pMCParticle));
-            const bool isTargetCosmic(isTrueCosmicRay && LArDirectionHelper::IsStoppingTopFaceMCParticle(pMCParticle));
 
-            CartesianVector yAxis(0.f, 1.f, 0.f);
-            float pfoPolarAngle(LArDirectionHelper::GetAngleWithVector(this->GetPandora(), pPfo, yAxis));
-
-            bool pfoIntersectsTopFace(LArDirectionHelper::IntersectsYFace(this->GetPandora(), pPfo)), pfoFiducialLowY(LArDirectionHelper::HasFiducialLowY(this->GetPandora(), pPfo)), pfoHighTopY(LArDirectionHelper::HasHighTopY(this->GetPandora(), pPfo, 100.0));
-            bool isTargetTopFacePfo(pfoHighTopY && pfoIntersectsTopFace && pfoFiducialLowY);
-
-            if (isTargetTopFacePfo)
-                eventContainsTargetPfo = true;
-
-            if (isTargetCosmic)
-                eventContainsTrueTargetCR = true;
-
-            if (std::find(connectedPfos.begin(), connectedPfos.end(), pPfo) != connectedPfos.end() && std::sqrt(LArPfoHelper::GetThreeDLengthSquared(pPfo)) > longestNeutrinoPfoLength)
+            if (std::sqrt(LArPfoHelper::GetThreeDLengthSquared(pPfo)) > longestNeutrinoPfoLength)
             {
                 std::cout << "FOUND NU RECO PARTICLE" << std::endl;
                 longestNeutrinoPfoLength = std::sqrt(LArPfoHelper::GetThreeDLengthSquared(pPfo));
-
                 nuRecoTrueCosmicRay = isTrueCosmicRay;
-                nuRecoIntersectsTopFace = pfoIntersectsTopFace;
-                nuRecoFiducialLowY = pfoFiducialLowY;
-                nuRecoHighTopY = pfoHighTopY;
-                nuRecoPolarAngle = pfoPolarAngle;
-
-                nuRecoIsTargetPfo = isTargetTopFacePfo;
-                nuRecoIsTrueTargetCR = isTargetCosmic;
             }
         }
         catch (...)
@@ -893,7 +870,6 @@ void EventValidationAlgorithm::WriteNeutrinoIdCheck(const pandora::MCParticleLis
     }
 
     //-------------------------
-
 
     LArMCParticleHelper::MCRelationMap mcPrimaryMap;
     LArMCParticleHelper::GetMCPrimaryMap(pMCParticleList, mcPrimaryMap);
@@ -925,22 +901,32 @@ void EventValidationAlgorithm::WriteNeutrinoIdCheck(const pandora::MCParticleLis
 
     //-------------------------
 
-    const auto recoVertexPosition(LArPfoHelper::GetVertex(neutrinoPfos.front())->GetPosition());
+    pandora::MCParticleVector trueNeutrinos;
+    LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
+
+    pandora::CartesianVector trueVertexPosition(trueNeutrinos.front()->GetVertex());
+
+    int primaryNeutrinoMuonTrueUpwards(-1);
+    float currentMuonLength(0.f);
+
+    for (const auto pMCParticle : *pMCParticleList)
+    {
+        if ((pMCParticle->GetVertex() - pMCParticle->GetEndpoint()).GetMagnitude() > currentMuonLength && pMCParticle->GetParticleId() == 13 && LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCParticle))
+        {
+            if (pMCParticle->GetEndpoint().GetY() >= pMCParticle->GetVertex().GetY())
+                primaryNeutrinoMuonTrueUpwards = 1;
+            else
+                primaryNeutrinoMuonTrueUpwards = 0;
+        }
+    }
 
     //-------------------------
 
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "EventContainsTargetPfo", eventContainsTargetPfo ? 1 : 0));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "EventContainsTrueTargetCR", eventContainsTrueTargetCR ? 1 : 0));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoVertexX", recoVertexPosition.GetX()));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoVertexY", recoVertexPosition.GetY()));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoVertexZ", recoVertexPosition.GetZ()));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoIsTargetPfo", nuRecoIsTargetPfo));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoIsTrueTargetCR", nuRecoIsTrueTargetCR));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "PrimaryNeutrinoMuonTrueUpwards", primaryNeutrinoMuonTrueUpwards));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "TrueVertexX", trueVertexPosition.GetX()));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "TrueVertexY", trueVertexPosition.GetY()));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "TrueVertexZ", trueVertexPosition.GetZ()));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoTrueCosmicRay", nuRecoTrueCosmicRay));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoIntersectsTopFace", nuRecoIntersectsTopFace));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoFiducialLowY", nuRecoFiducialLowY));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoHighTopY", nuRecoHighTopY));
-    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoPolarAngle", nuRecoPolarAngle));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NuRecoHitPurityFraction", neutrinoHitPurityFraction));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "NeutrinoIdCorrect", neutrinoHitPurityFraction > 0.9 ? 1 : 0));
     PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "NeutrinoIdCheck", "TrueInteractionType", globalInteractionTypeInt));
