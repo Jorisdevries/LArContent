@@ -302,6 +302,7 @@ private:
     bool                        m_shouldRunCosmicHitRemoval;        ///< Whether to remove hits from tagged cosmic-rays
     bool                        m_cheatTopFaceCosmicRemoval;        ///< 
     bool                        m_recoTopFaceCosmicRemoval;         ///< 
+    float                       m_deltaChiSquaredCut;
     bool                        m_shouldRunSlicing;                 ///< Whether to slice events into separate regions for processing
     bool                        m_shouldRunNeutrinoRecoOption;      ///< Whether to run neutrino reconstruction for each slice
     bool                        m_shouldRunCosmicRecoOption;        ///< Whether to run cosmic-ray reconstruction for each slice

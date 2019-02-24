@@ -42,6 +42,7 @@ MasterAlgorithm::MasterAlgorithm() :
     m_shouldRunCosmicHitRemoval(true),
     m_cheatTopFaceCosmicRemoval(false),
     m_recoTopFaceCosmicRemoval(false),
+    m_deltaChiSquaredCut(-0.1),
     m_shouldRunSlicing(true),
     m_shouldRunNeutrinoRecoOption(true),
     m_shouldRunCosmicRecoOption(true),
@@ -417,7 +418,7 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
                     connectedPfosNearEndpoint.push_back(pConnectedPfo);
             }
 
-            const bool criteriaMet(deltaChiSquaredUpDownPerHit <= -0.1 && correctedPfoHighYVector.GetY() > 100 && pfoPolarAngle < 1.15395 && pfoCharge > 31500 && std::abs(neutrinoMomentum.GetZ()) < 0.785 && static_cast<int>(connectedPfosNearEndpoint.size()) < 3);
+            const bool criteriaMet(deltaChiSquaredUpDownPerHit <= m_deltaChiSquaredCut && correctedPfoHighYVector.GetY() > 100 && pfoPolarAngle < 1.15395 && pfoCharge > 31500 && std::abs(neutrinoMomentum.GetZ()) < 0.785 && static_cast<int>(connectedPfosNearEndpoint.size()) < 3);
             //////////////////////////////////////////////
 
             PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
@@ -1413,6 +1414,9 @@ StatusCode MasterAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
     "RecoTopFaceCosmicRemoval", m_recoTopFaceCosmicRemoval));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+    "DeltaChiSquaredCut", m_deltaChiSquaredCut));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
     "WriteToTree", m_writeToTree));

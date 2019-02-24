@@ -363,6 +363,7 @@ private:
     bool                    m_viewEvent;                    ///< Whether to draw the W CaloHits, True Nu hits and Nu Reco hits
     bool                    m_eventSelection;
     bool                    m_writeNeutrinoIdCheck;
+    bool                    m_data;
 
     std::string             m_treeName;                     ///< Name of output tree
     std::string             m_fileName;                     ///< Name of output file

@@ -93,7 +93,7 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
 
     catch (StatusCodeException &statusCodeException)
     {
-        std::cout << "Failure." << std::endl;
+        //std::cout << "Failure." << std::endl;
         throw statusCodeException;
     }
 }
