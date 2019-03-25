@@ -72,31 +72,42 @@ StatusCode DirectionAnalysisAlgorithm::Run()
     const ClusterList *pClusterList(nullptr);
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_clusterListName, pClusterList));
 
-    const VertexList *pVertexList(nullptr);
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_vertexListName, pVertexList));
+    //const VertexList *pVertexList(nullptr);
+    //PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_vertexListName, pVertexList));
 
-    const VertexList *pCandidateVertexList(nullptr);
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, "CandidateVertices3D", pCandidateVertexList));
+    //const VertexList *pCandidateVertexList(nullptr);
+    //PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, "CandidateVertices3D", pCandidateVertexList));
 
-    std::cout << "pCandidateVertexList->size(): " << pCandidateVertexList->size() << std::endl;
+    //std::cout << "pCandidateVertexList->size(): " << pCandidateVertexList->size() << std::endl;
 
     const PfoList *pPfoList(nullptr);
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_pfoListName, pPfoList));
 
     pandora::MCParticleVector mcParticleVector(pMCParticleList->begin(), pMCParticleList->end());
-    pandora::ClusterVector clusterVector(pClusterList->begin(), pClusterList->end());
+    //pandora::ClusterVector clusterVector(pClusterList->begin(), pClusterList->end());
+
+    pandora::ClusterVector clusterVector;
+
+    for (const auto pCluster : *pClusterList)
+    {
+        if (LArClusterHelper::GetClusterHitType(pCluster) == TPC_VIEW_W)
+            clusterVector.push_back(pCluster);
+    }
+
+    std::cout << "clusterVector.size(): " << clusterVector.size() << std::endl;
+    //std::cout << "pVertexList->size(): " << pVertexList->size() << std::endl;
 
     pandora::PfoList allPfos;
     LArPfoHelper::GetAllConnectedPfos(*pPfoList, allPfos);
     pandora::PfoVector pfoVector(allPfos.begin(), allPfos.end());
 
-    const pandora::Vertex* const pNeutrinoVertex(pVertexList->front());
+    //const pandora::Vertex* const pNeutrinoVertex(pVertexList->front());
 
     pandora::MCParticleVector trueNeutrinos;
     LArMCParticleHelper::GetTrueNeutrinos(pMCParticleList, trueNeutrinos);
 
-    if (trueNeutrinos.size() != 1 || pVertexList->size() != 1)
-        return STATUS_CODE_SUCCESS;
+    //if (trueNeutrinos.size() != 1 || pVertexList->size() != 1)
+    //    return STATUS_CODE_SUCCESS;
 
     //pandora::CaloHitVector hitVector(pCaloHitList->begin(), pCaloHitList->end());
     //for (auto pCaloHit : hitVector)
@@ -104,14 +115,14 @@ StatusCode DirectionAnalysisAlgorithm::Run()
     
     LArSpaceChargeHelper::Configure("/usera/jjd49/pandora_direction/PandoraPFA/LArContent-origin/vertex_direction/larpandoracontent/LArDirection/SCEoffsets_MicroBooNE_E273.root");
 
-    if (!m_data)
-        this->WriteMCInformation(pMCParticleList, pCaloHitList);
+    //if (!m_data)
+    //    this->WriteMCInformation(pMCParticleList, pCaloHitList);
 
     this->WritePfoInformation(pfoVector);
-    this->WriteClusterAndHitInformation(clusterVector);
+    //this->WriteClusterAndHitInformation(clusterVector);
 
-    if (!m_cosmic)
-        this->WriteVertexInformation(pMCParticleList, pCandidateVertexList, pNeutrinoVertex);
+    //if (!m_cosmic)
+    //    this->WriteVertexInformation(pMCParticleList, pCandidateVertexList, pNeutrinoVertex);
     
     return STATUS_CODE_SUCCESS;
 }

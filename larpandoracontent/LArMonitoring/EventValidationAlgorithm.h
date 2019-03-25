@@ -299,8 +299,6 @@ private:
 
     void WriteCosmicVariables(const pandora::ParticleFlowObject *const pPfo, std::string variableNamePrefix) const;
 
-    void FilterHitCollection(const pandora::Cluster* const pCluster, int nNeighboursToConsider, std::vector<HitWithDistance> &hitWithDistanceVector) const;
-
     bool MCIntersectsYFace(const pandora::MCParticle* pMCParticle) const;
 
     bool RecoIntersectsYFace(const pandora::ParticleFlowObject *const pPfo) const;
@@ -364,6 +362,7 @@ private:
     bool                    m_eventSelection;
     bool                    m_writeNeutrinoIdCheck;
     bool                    m_data;
+    float                   m_gainFactor;
 
     std::string             m_treeName;                     ///< Name of output tree
     std::string             m_fileName;                     ///< Name of output file

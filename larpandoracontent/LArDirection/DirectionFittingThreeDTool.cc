@@ -78,7 +78,7 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
 
         DirectionFitObject finalDirectionFitObject;
         this->FitHitObjectVector(endpointHitObjectVector, finalDirectionFitObject);
-        this->SetMCInformation(pPfo, finalDirectionFitObject);
+        //this->SetMCInformation(pPfo, finalDirectionFitObject);
 
         globalTrackLength3D = 0.f;
 

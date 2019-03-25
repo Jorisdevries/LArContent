@@ -150,6 +150,8 @@ public:
         void   SetSplitPosition(float splitPosition);
         void   SetSplitApplied(bool splitApplied);
         void   SetBeforeDeltaChiSquaredPerHit(float beforeDeltaChiSquaredPerHit);
+        void   SetBeforeForwardsChiSquaredPerHit(float beforeForwardsChiSquaredPerHit);
+        void   SetBeforeBackwardsChiSquaredPerHit(float beforeBackwardsChiSquaredPerHit);
 
         int    GetBeforeNHits();
         int    GetAfterNHits();
@@ -159,6 +161,11 @@ public:
         float  GetSplitPosition();
         bool   GetSplitApplied();
         float  GetBeforeDeltaChiSquaredPerHit();
+        float  GetBeforeForwardsChiSquaredPerHit();
+        float  GetBeforeBackwardsChiSquaredPerHit();
+
+        void SetSplitCorrect(int isCorrect);
+        int GetSplitCorrect();
     
 
     private:
@@ -170,6 +177,9 @@ public:
         float                                       m_splitposition;
         bool                                        m_splitapplied;
         float                                       m_beforedeltachisquaredperhit;        
+        float                                       m_beforeforwardschisquaredperhit;        
+        float                                       m_beforebackwardschisquaredperhit;        
+        int                                         m_splitcorrect;
     };
 
     class LookupTable
@@ -245,6 +255,7 @@ public:
         float GetMinChiSquared();
         float GetMinChiSquaredPerHit();
 
+        float GetDeltaChiSquared();
         float GetDeltaChiSquaredPerHit();
         float GetUpDownDeltaChiSquaredPerHit();
         float GetUpDownDeltaChiSquared();
@@ -269,6 +280,7 @@ public:
         SplitObject GetFRObject();
 
         void DrawFit();
+        void DrawEnhancedFit();
 
         void SetMCDirection(int direction);
         int GetMCDirection();
@@ -312,6 +324,7 @@ public:
     {
         public:
 
+            JumpObject();
             JumpObject(float &longitudinalPosition, float &jumpValue);
             JumpObject(float &longitudinalPosition, float &jumpValue, float &openingAngle);
 
@@ -320,6 +333,12 @@ public:
             float GetJumpValue();
 
             float GetOpeningAngle();
+
+            bool operator==(const JumpObject &rhs)
+            {
+                return this->m_longitudinalposition == rhs.m_longitudinalposition;
+            };
+         // Overload '+' operator as member function of the class
 
         private:
             float       m_longitudinalposition;
@@ -360,10 +379,12 @@ public:
     double                  m_tableStepSize;
 
     bool                    m_writeTable;
+    bool                    m_useMCInformation;
 
     std::string             m_lookupTableFileName;
     std::string             m_probabilityFileName;
     std::string             m_treeName;
+    std::string             m_fileName;                     ///< Name of output file
 
     //-----------------------------------------------------------------------------------------------
 
@@ -383,6 +404,8 @@ public:
 
     void TrackInnerFilter(HitChargeVector &hitChargeVector, HitChargeVector &filteredHitChargeVector);
 
+    bool IsPureHit(HitCharge &hitCharge);
+
     void SetNearestNeighbourValues(HitChargeVector &innerHitChargeVector, int &nNeighboursToConsider);
 
     void FragmentRemoval(HitChargeVector &hitChargeVector, HitChargeVector &filteredHitChargeVector, float &splitPosition);
@@ -401,7 +424,7 @@ public:
 
     void FindTrackEndJumps(HitChargeVector &hitChargeVector, std::vector<JumpObject> &trackEndJumps);
 
-    void ParticleSplitting(HitChargeVector &hitChargeVector, DirectionFitObject &fitResult1, DirectionFitObject &fitResult2, bool &splitApplied, SplitObject &splitObject);
+    void ParticleSplitting(const pandora::Cluster *const pCluster, HitChargeVector &hitChargeVector, DirectionFitObject &fitResult1, DirectionFitObject &fitResult2, bool &splitApplied, SplitObject &splitObject);
 
     void FindKinkSize(const pandora::Cluster *const pCluster, float &splitPosition, float &kinkSize);
 
@@ -439,7 +462,9 @@ public:
 
     void TestHypothesisOne(DirectionFitObject &directionFitObject);
 
-    void TestHypothesisTwo(DirectionFitObject &directionFitObject);
+    void TestHypothesisTwo(const pandora::Cluster *const pCluster, DirectionFitObject &directionFitObject);
+
+    bool IsClusterTwoParticles(const pandora::Cluster *const pCluster, HitChargeVector forwardsFitCharges, HitChargeVector backwardsFitCharges);
 
     void TestHypothesisThree(DirectionFitObject &directionFitObject);
 
@@ -695,7 +720,10 @@ inline TrackDirectionTool::SplitObject::SplitObject() :
     m_chisquaredperhitchange(0.f),
     m_splitposition(0.f),
     m_splitapplied(false),
-    m_beforedeltachisquaredperhit(0.f)        
+    m_beforedeltachisquaredperhit(0.f),
+    m_beforeforwardschisquaredperhit(0.f),
+    m_beforebackwardschisquaredperhit(0.f),
+    m_splitcorrect(-1)        
 {
 }
 
@@ -709,7 +737,10 @@ inline TrackDirectionTool::SplitObject::SplitObject(int beforeNumberHits, int af
     m_chisquaredperhitchange(chiSquaredPerHitChange),
     m_splitposition(splitPosition),
     m_splitapplied(false),
-    m_beforedeltachisquaredperhit(0.f)        
+    m_beforedeltachisquaredperhit(0.f),
+    m_beforeforwardschisquaredperhit(0.f),
+    m_beforebackwardschisquaredperhit(0.f),
+    m_splitcorrect(-1)        
 {
 }
 
@@ -723,7 +754,10 @@ inline TrackDirectionTool::SplitObject::SplitObject(int beforeNumberHits, int af
     m_chisquaredperhitchange(chiSquaredPerHitChange),
     m_splitposition(splitPosition),
     m_splitapplied(splitApplied),
-    m_beforedeltachisquaredperhit(beforeDeltaChiSquaredPerHit)        
+    m_beforedeltachisquaredperhit(beforeDeltaChiSquaredPerHit),        
+    m_beforeforwardschisquaredperhit(0.f),
+    m_beforebackwardschisquaredperhit(0.f),
+    m_splitcorrect(-1)        
 {
 }
 
@@ -769,6 +803,16 @@ inline void   TrackDirectionTool::SplitObject::SetBeforeDeltaChiSquaredPerHit(fl
     m_beforedeltachisquaredperhit = beforeDeltaChiSquaredPerHit;
 }
 
+inline void   TrackDirectionTool::SplitObject::SetBeforeForwardsChiSquaredPerHit(float beforeForwardsChiSquaredPerHit)
+{
+    m_beforeforwardschisquaredperhit = beforeForwardsChiSquaredPerHit;
+}
+
+inline void   TrackDirectionTool::SplitObject::SetBeforeBackwardsChiSquaredPerHit(float beforeBackwardsChiSquaredPerHit)
+{
+    m_beforebackwardschisquaredperhit = beforeBackwardsChiSquaredPerHit;
+}
+
 inline int     TrackDirectionTool::SplitObject::GetBeforeNHits()
 {
     return m_beforenhits;
@@ -807,6 +851,26 @@ inline bool TrackDirectionTool::SplitObject::GetSplitApplied()
 inline float TrackDirectionTool::SplitObject::GetBeforeDeltaChiSquaredPerHit()
 {
     return m_beforedeltachisquaredperhit;
+}
+
+inline float TrackDirectionTool::SplitObject::GetBeforeForwardsChiSquaredPerHit()
+{
+    return m_beforeforwardschisquaredperhit;
+}
+
+inline float TrackDirectionTool::SplitObject::GetBeforeBackwardsChiSquaredPerHit()
+{
+    return m_beforebackwardschisquaredperhit;
+}
+
+inline void TrackDirectionTool::SplitObject::SetSplitCorrect(int isCorrect)
+{
+    m_splitcorrect = isCorrect;
+}
+
+inline int TrackDirectionTool::SplitObject::GetSplitCorrect()
+{
+    return m_splitcorrect;
 }
 
 inline TrackDirectionTool::LookupTable::LookupTable()
@@ -1111,6 +1175,13 @@ inline float TrackDirectionTool::DirectionFitObject::GetMinChiSquaredPerHit()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+inline float TrackDirectionTool::DirectionFitObject::GetDeltaChiSquared()
+{
+    return (m_nhits != 0 ? (m_forwardschisquared - m_backwardschisquared) : std::numeric_limits<float>::max());
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 inline float TrackDirectionTool::DirectionFitObject::GetDeltaChiSquaredPerHit()
 {
     return (m_nhits != 0 ? (m_forwardschisquared - m_backwardschisquared)/m_nhits : std::numeric_limits<float>::max());
@@ -1368,6 +1439,15 @@ inline void TrackDirectionTool::DirectionFitObject::Print()
     std::cout << "Best chi squared per hit: " << std::min(m_forwardschisquared, m_backwardschisquared)/m_nhits << std::endl;
     std::cout << "Number of hits: " << m_nhits << std::endl;
     std::cout << "Hypothesis: " << m_hypothesis << std::endl;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+inline TrackDirectionTool::JumpObject::JumpObject() :
+    m_longitudinalposition(0.f),
+    m_jumpvalue(0.f),
+    m_openingangle(0.f)
+{
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

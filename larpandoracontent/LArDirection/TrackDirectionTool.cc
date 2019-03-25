@@ -26,6 +26,7 @@ using namespace pandora;
 lar_content::TrackDirectionTool::HitChargeVector* pMinuitVector = new lar_content::TrackDirectionTool::HitChargeVector;
 
 float globalTotalCharge(0.f), globalTrackLength(0.f), globalTotalHitWidth(0.f);
+int globalTrueDirection(-1);
 
 static lar_content::TrackDirectionTool::LookupTable globalLookupTable;
 
@@ -40,6 +41,7 @@ TrackDirectionTool::TrackDirectionTool() :
     m_slidingFitWindow(5),
     m_minClusterCaloHits(25),
     m_minClusterLength(5.f),
+    m_targetParticlePDG(13),
     m_numberTrackEndHits(100000),
     m_endpointProtectionFraction(0.05),
     m_enableFragmentRemoval(true),
@@ -47,6 +49,7 @@ TrackDirectionTool::TrackDirectionTool() :
     m_tableInitialEnergy(2000.f),
     m_tableStepSize(0.5f),
     m_writeTable(false),
+    m_useMCInformation(false),
     m_lookupTableFileName("lookuptable.root"),
     m_probabilityFileName("probability.root"),
     m_treeName("lookuptable")
@@ -59,7 +62,9 @@ TrackDirectionTool::~TrackDirectionTool()
 {
     if (m_writeTable)
     {
-        PANDORA_MONITORING_API(SaveTree(this->GetPandora(), m_treeName.c_str(), m_lookupTableFileName.c_str(), "UPDATE"));
+        PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "FilterTree", m_fileName.c_str(), "UPDATE"));
+        PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "FilterHitTree", m_fileName.c_str(), "UPDATE"));
+        PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "BraggPeakFilterTree", m_fileName.c_str(), "UPDATE"));
     }
 }
 
@@ -85,6 +90,12 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(c
         this->ComputeProbability(finalDirectionFitObject);
         this->SetEndpoints(finalDirectionFitObject, pTargetClusterW);
         //this->SetMCTruth(finalDirectionFitObject, pTargetClusterW);
+
+        if (m_useMCInformation)
+        {
+            const auto pMCParticle(MCParticleHelper::GetMainMCParticle(pTargetClusterW));
+            globalTrueDirection = (pMCParticle->GetVertex().GetZ() < pMCParticle->GetEndpoint().GetZ() ? 1 : 0); 
+        }
 
         this->TidyUp();
         return finalDirectionFitObject;
@@ -441,7 +452,7 @@ void TrackDirectionTool::FillHitChargeVector(const Cluster *const pCluster, HitC
         if (!((hitWidth > 0.3 && hitWidth < 1.8) && (caloHitEnergy > 50.0 && caloHitEnergy < 600.0)))
             continue;
 
-        caloHitEnergy *= 273.5; //ADC to electron
+        caloHitEnergy *= 187.6; //ADC to electron
         caloHitEnergy *= 23.6/1000000; //ionisation energy per electron in MeV
         caloHitEnergy /= 0.62;
 
@@ -450,7 +461,7 @@ void TrackDirectionTool::FillHitChargeVector(const Cluster *const pCluster, HitC
         if (rL == 0.)
             continue;
 
-        float calibratedUncertainty(std::sqrt((0.00419133 * (caloHitEnergy/hitWidth) * (caloHitEnergy/hitWidth)) + (0.00967141 * (caloHitEnergy/hitWidth)))); //70%
+        float calibratedUncertainty(std::sqrt((0.00303236 * (caloHitEnergy/hitWidth) * (caloHitEnergy/hitWidth)) + (0.0038681 * (caloHitEnergy/hitWidth)))); //70%
         HitCharge hitCharge(pCaloHit, rL, hitWidth, caloHitEnergy, calibratedUncertainty);
         hitChargeVector.push_back(hitCharge);
     }
@@ -515,9 +526,119 @@ void TrackDirectionTool::TrackInnerFilter(HitChargeVector &hitChargeVector, HitC
      std::sort(innerHitChargeVector.begin(), innerHitChargeVector.end(), SortByDistanceToNN);
      filteredHitChargeVector.insert(filteredHitChargeVector.begin(), innerHitChargeVector.begin(), innerHitChargeVector.begin() + 0.72 * innerHitChargeVector.size()); //lots of testing has been done to optimise percentage
      std::sort(filteredHitChargeVector.begin(), filteredHitChargeVector.end(), SortHitChargeVectorByRL);
+
+    //-------------
+
+    /*
+    if (m_writeTable)
+    {
+        std::sort(innerHitChargeVector.begin(), innerHitChargeVector.end(), SortByDistanceToNN);
+
+        for (int i = 0; i < innerHitChargeVector.size(); ++i)
+        {
+            auto hitCharge(innerHitChargeVector.at(i)); 
+            const float fractionalPosition(static_cast<float>(i)/innerHitChargeVector.size());
+            bool isPure(this->IsPureHit(hitCharge));
+
+            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterHitTree", "FractionalPosition", fractionalPosition));
+            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterHitTree", "IsPure", isPure ? 1 : 0));
+            PANDORA_MONITORING_API(FillTree(this->GetPandora(), "FilterHitTree"));
+        }
+
+         std::sort(filteredHitChargeVector.begin(), filteredHitChargeVector.end(), SortHitChargeVectorByRL);
+    }
+    */
+
+    int totalNumberHits(hitChargeVector.size()), nTotalHitsFiltered(0), nMuonHits(0), nNonMuonHits(0), nMuonHitsFiltered(0), nNonMuonHitsFiltered(0);
+
+    for (HitCharge hitCharge : hitChargeVector)
+    {   
+        bool isPure(this->IsPureHit(hitCharge));
+        
+        if (isPure)
+            nMuonHits++;
+        else 
+            nNonMuonHits++;
+        
+        int count(0);
+        
+        for (HitCharge &hitCharge2 : filteredHitChargeVector)
+        {   
+            if (hitCharge2.GetCharge() == hitCharge.GetCharge())
+                count++;
+        }
+        
+        if (count == 0)
+        {   
+            nTotalHitsFiltered++;
+            
+            if (isPure)
+                nMuonHitsFiltered++;
+            else
+                nNonMuonHitsFiltered++;
+        }
+    }
+
+    float fractionImpureHits(((float) nNonMuonHits) / (nNonMuonHits + nMuonHits));
+
+    float fractionFilteredBelongingToMuon(((float)nMuonHitsFiltered)/nTotalHitsFiltered), fractionFilteredBelongingToNonMuon(((float)nNonMuonHitsFiltered)/nTotalHitsFiltered),
+    fractionMuonHitsFiltered(((float)nMuonHitsFiltered)/nMuonHits), fractionNonMuonHitsFiltered(((float)nNonMuonHitsFiltered)/nNonMuonHits), fractionClusterHitsFiltered(((float)nTotalHitsFiltered)/totalNumberHits);
+
+    if (m_writeTable)
+    {
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "totalNumberHits", totalNumberHits));
+        //PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "globalTrueTargetParticleEnergy", globalTrueTargetParticleEnergy));
+        //PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "trackLength", trackLength));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "fractionImpureHits", fractionImpureHits));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "nTotalHitsFiltered", nTotalHitsFiltered));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "nMuonHits", nMuonHits));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "nNonMuonHits", nNonMuonHits));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "nMuonHitsFiltered", nMuonHitsFiltered));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "nNonMuonHitsFiltered", nNonMuonHitsFiltered));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "fractionFilteredBelongingToMuon", fractionFilteredBelongingToMuon));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "fractionFilteredBelongingToNonMuon", fractionFilteredBelongingToNonMuon));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "fractionMuonHitsFiltered", fractionMuonHitsFiltered));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "fractionNonMuonHitsFiltered", fractionNonMuonHitsFiltered));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "fractionClusterHitsFiltered", fractionClusterHitsFiltered));
+        //PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "fileIdentifier", m_fileIdentifier));
+        //PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "FilterTree", "eventNumber", m_eventNumber));
+        PANDORA_MONITORING_API(FillTree(this->GetPandora(), "FilterTree"));
+    }    
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
+
+bool TrackDirectionTool::IsPureHit(HitCharge &hitCharge)
+{
+    float contributionThreshold(0.15);
+
+    try  
+    {    
+        int nContributingMCParticles(0);
+        const auto pCaloHit(hitCharge.GetCaloHit());
+        MCParticleWeightMap mcParticleWeightMap(pCaloHit->GetMCParticleWeightMap());
+
+        for (MCParticleWeightMap::const_iterator mapIter = mcParticleWeightMap.begin(), mapIterEnd = mcParticleWeightMap.end(); mapIter != mapIterEnd; ++mapIter)
+        {    
+            float contribution(mapIter->second);
+
+            if (contribution > contributionThreshold)
+                nContributingMCParticles++;
+        }    
+
+        if (MCParticleHelper::GetMainMCParticle(pCaloHit)->GetParticleId() == 13 && nContributingMCParticles == 1)
+            return true;
+        else 
+            return false;
+    }    
+    catch (...)
+    {    
+        std::cout << "Purity of hit uncertain." << std::endl;
+        return true;
+    }    
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
 
 void TrackDirectionTool::SetNearestNeighbourValues(HitChargeVector &innerHitChargeVector, int &nNeighboursToConsider)
 {
@@ -571,6 +692,7 @@ void TrackDirectionTool::FragmentRemoval(HitChargeVector &hitChargeVector, HitCh
 
 void TrackDirectionTool::SimpleTrackEndFilter(HitChargeVector &hitChargeVector)
 {
+    /*
     float lowerBound(0.9), upperBound(2.2);
 
     while ((*(hitChargeVector.begin())).GetChargeOverWidth()/(*(std::next(hitChargeVector.begin(), 1))).GetChargeOverWidth() <= lowerBound || (*(hitChargeVector.begin())).GetChargeOverWidth()/(*(std::next(hitChargeVector.begin(), 1))).GetChargeOverWidth() >= upperBound)
@@ -580,7 +702,6 @@ void TrackDirectionTool::SimpleTrackEndFilter(HitChargeVector &hitChargeVector)
         hitChargeVector.pop_back();
 
     //This piece of logic removes hits that have uncharacteristically high or low Q/w values (in tails of Q/w distribution)
-    /*
     hitChargeVector.erase(
     std::remove_if(hitChargeVector.begin(), hitChargeVector.end(),
         [](HitCharge & hitCharge) { return hitCharge.m_intails; }),
@@ -642,7 +763,7 @@ void TrackDirectionTool::TrackEndFilter(HitChargeVector &hitChargeVector, Direct
     this->GetAverageQoverWTrackBody(hitChargeVector, bodyQoverW);
 
     int nHitsToSkip(3), counterFromBeginning(-1), counterToEnd(hitChargeVector.size() - 1);
-    float trackEndRange(0.025);
+    float trackEndRange(0.05);
     
     HitChargeVector filteredHitChargeVector(hitChargeVector);
 
@@ -659,6 +780,17 @@ void TrackDirectionTool::TrackEndFilter(HitChargeVector &hitChargeVector, Direct
             float nearestRatio(std::max((hitCharge.GetChargeOverWidth()/previousHitCharge.GetChargeOverWidth()), (hitCharge.GetChargeOverWidth()/nextHitCharge.GetChargeOverWidth())));
             float plusMinusNRatio(std::max((hitCharge.GetChargeOverWidth()/minusNHitCharge.GetChargeOverWidth()), (hitCharge.GetChargeOverWidth()/plusNHitCharge.GetChargeOverWidth())));
             float distanceFromBodyQoverW(std::abs(hitCharge.GetChargeOverWidth() - bodyQoverW));
+
+            int isBraggPeakHit(((hitCharge.GetLongitudinalPosition()/trackLength <= trackEndRange && globalTrueDirection == 0) || (hitCharge.GetLongitudinalPosition()/trackLength >= (1.0 - trackEndRange) && globalTrueDirection == 1)) ? 1 : 0);
+
+            if (m_writeTable)
+            {
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "BraggPeakFilterTree", "IsBraggPeakHit", isBraggPeakHit));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "BraggPeakFilterTree", "NearestNeighbourRatio", nearestRatio));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "BraggPeakFilterTree", "ThirdNearestNeighbourRatio", plusMinusNRatio));
+                PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "BraggPeakFilterTree", "DistanceFromAverageCharge", distanceFromBodyQoverW));
+                PANDORA_MONITORING_API(FillTree(this->GetPandora(), "BraggPeakFilterTree"));
+            }
 
             if (distanceFromBodyQoverW >= 4.8 || std::abs(1.0 - nearestRatio) >= 0.4 || std::abs(1.0 - plusMinusNRatio) >= 0.7)
                 iter = filteredHitChargeVector.erase(iter);
@@ -695,6 +827,14 @@ void TrackDirectionTool::TrackEndFilter(HitChargeVector &hitChargeVector, Direct
     tefObject.SetAfterNHits(filteredHitChargeVector.size());
     tefObject.SetSplitApplied(shouldApply);
     tefObject.SetBeforeDeltaChiSquaredPerHit(beforeDirectionFitObject.GetDeltaChiSquaredPerHit());
+
+    if (m_useMCInformation)
+    {
+        bool splitCorrect((beforeDirectionFitObject.GetDirectionEstimate() != globalTrueDirection && afterDirectionFitObject.GetDirectionEstimate() == globalTrueDirection) ? true : false);
+        tefObject.SetSplitCorrect(splitCorrect);
+        tefObject.SetBeforeForwardsChiSquaredPerHit(beforeDirectionFitObject.GetForwardsChiSquaredPerHit());
+        tefObject.SetBeforeBackwardsChiSquaredPerHit(beforeDirectionFitObject.GetBackwardsChiSquaredPerHit());
+    }
 
     directionFitObject.SetTEFObject(tefObject);
 
@@ -846,8 +986,11 @@ void TrackDirectionTool::FindTrackEndJumps(HitChargeVector &hitChargeVector, std
 
 //----------------------------------------------------------------------------------------------------------------------------------
 
-void TrackDirectionTool::ParticleSplitting(HitChargeVector &hitChargeVector, DirectionFitObject &backwardsDirectionFitObject, DirectionFitObject &forwardsDirectionFitObject, bool &splitApplied, SplitObject &splitObject)
+void TrackDirectionTool::ParticleSplitting(const Cluster* pCluster, HitChargeVector &hitChargeVector, DirectionFitObject &backwardsDirectionFitObject, DirectionFitObject &forwardsDirectionFitObject, bool &splitApplied, SplitObject &splitObject)
 {
+   std::cout << "Splitting called" << std::endl;
+    std::cout << ">>>>>>>>>>>>> m_useMCInformation: " << m_useMCInformation << std::endl;
+
     DirectionFitObject beforeDirectionFitObject;
     this->FitHitChargeVector(hitChargeVector, beforeDirectionFitObject);
     DirectionFitObject outputBackwardsDirectionFitObject(beforeDirectionFitObject), outputForwardsDirectionFitObject(beforeDirectionFitObject);
@@ -859,10 +1002,25 @@ void TrackDirectionTool::ParticleSplitting(HitChargeVector &hitChargeVector, Dir
     std::vector<float> calorimetricSplitPositions;
     this->CreateCalorimetricSplitHitVector(hitChargeVector, calorimetricSplitPositions);
 
+    std::cout << "calorimetricSplitPositions.size(): " << calorimetricSplitPositions.size() << std::endl;
+
     for (float &splitPosition : calorimetricSplitPositions)
     {
+        std::cout << "splitPosition: " << splitPosition << std::endl;
         HitChargeVector backwardsTestHitCollection, forwardsTestHitCollection;
         this->SplitHitCollectionByLeftRight(hitChargeVector, splitPosition, backwardsTestHitCollection, forwardsTestHitCollection);
+
+        if (backwardsTestHitCollection.size() <= 3)
+        {
+            hitChargeVector = forwardsTestHitCollection;
+            continue;
+        }
+
+        if (forwardsTestHitCollection.size() <= 3)
+        {
+            hitChargeVector = backwardsTestHitCollection;
+            continue;
+        }
 
         HitChargeVector backwardsTestFilteredHitCollection, forwardsFilteredTestHitCollection;
         this->TrackInnerFilter(backwardsTestHitCollection, backwardsTestFilteredHitCollection);
@@ -872,6 +1030,8 @@ void TrackDirectionTool::ParticleSplitting(HitChargeVector &hitChargeVector, Dir
         this->FitHitChargeVector(backwardsTestFilteredHitCollection, forwardsFilteredTestHitCollection, backwardsTestDirectionFitObject, forwardsTestDirectionFitObject);
 
         float splitMinChiSquared((backwardsTestDirectionFitObject.GetNHits() > 0 ? backwardsTestDirectionFitObject.GetBackwardsChiSquared()/backwardsTestDirectionFitObject.GetNHits() : 0.f) + (forwardsTestDirectionFitObject.GetNHits() > 0 ? forwardsTestDirectionFitObject.GetForwardsChiSquared()/forwardsTestDirectionFitObject.GetNHits() : 0.f));
+
+        std::cout << "afterSplitChiSquared - splitMinChiSquared: " << afterSplitChiSquared - splitMinChiSquared << std::endl;
 
         //float kinkSize(0.f);
         //this->FindKinkSize(pTargetClusterW, splitPosition, kinkSize);
@@ -885,32 +1045,51 @@ void TrackDirectionTool::ParticleSplitting(HitChargeVector &hitChargeVector, Dir
         }
     }
 
+    std::cout << "bestSplitPosition: " << bestSplitPosition << std::endl;
+    std::cout << "outputBackwardsDirectionFitObject.GetNHits(): " << outputBackwardsDirectionFitObject.GetNHits() << std::endl;
+    std::cout << "outputForwardsDirectionFitObject.GetNHits(): " << outputForwardsDirectionFitObject.GetNHits() << std::endl;
+
     if (outputBackwardsDirectionFitObject.GetNHits() == 0 || outputForwardsDirectionFitObject.GetNHits() == 0)
         return;
 
     float ChiSquaredPerHitChange(beforeDirectionFitObject.GetMinChiSquaredPerHit() - (outputBackwardsDirectionFitObject.GetBackwardsChiSquared()/outputBackwardsDirectionFitObject.GetNHits() + outputForwardsDirectionFitObject.GetForwardsChiSquared()/outputForwardsDirectionFitObject.GetNHits()));
-    int beforeNumberHits((int)beforeDirectionFitObject.GetHitChargeVector().size());
-    float N(beforeNumberHits);
+    //int beforeNumberHits((int)beforeDirectionFitObject.GetHitChargeVector().size());
+    //float N(beforeNumberHits);
     bool shouldApply(true);
 
+    /*
     if (beforeNumberHits < 400 && ChiSquaredPerHitChange < (5.65777 - (0.586666/50) * N))
         shouldApply = false;
     if (beforeNumberHits >= 400 && ChiSquaredPerHitChange < 1.0)
         shouldApply = false;
+    */
+
+    if (m_useMCInformation)
+    {
+        std::cout << "THIS SHOULD BE CALLED" << std::endl;
+        bool splitCorrect(this->IsClusterTwoParticles(pCluster, outputBackwardsDirectionFitObject.GetBackwardsFitCharges(), outputForwardsDirectionFitObject.GetForwardsFitCharges()));
+        splitObject.SetSplitCorrect(splitCorrect);
+        splitObject.SetBeforeForwardsChiSquaredPerHit(beforeDirectionFitObject.GetForwardsChiSquaredPerHit());
+        splitObject.SetBeforeBackwardsChiSquaredPerHit(beforeDirectionFitObject.GetBackwardsChiSquaredPerHit());
+
+        std::cout << "Particle splitting correct: " << splitObject.GetSplitCorrect() << std::endl;
+        std::cout << "Chi squared per hit change: " << ChiSquaredPerHitChange << std::endl;
+    }
+
+    splitObject.SetSplitPosition(bestSplitPosition);
+    splitObject.SetBeforeMinChiSquaredPerHit(beforeDirectionFitObject.GetMinChiSquaredPerHit());
+    splitObject.SetAfterMinChiSquaredPerHit(beforeDirectionFitObject.GetMinChiSquaredPerHit() - ChiSquaredPerHitChange);
+    splitObject.SetMinChiSquaredPerHitChange(ChiSquaredPerHitChange);
+    splitObject.SetBeforeNHits(hitChargeVector.size());
+    splitObject.SetSplitApplied(splitApplied);
+    splitObject.SetBeforeDeltaChiSquaredPerHit(beforeDirectionFitObject.GetDeltaChiSquaredPerHit());
 
     if (shouldApply)
     {
         splitApplied = true;
+        splitObject.SetSplitPosition(bestSplitPosition);
         backwardsDirectionFitObject = outputBackwardsDirectionFitObject;
         forwardsDirectionFitObject = outputForwardsDirectionFitObject;
-
-        splitObject.SetSplitPosition(bestSplitPosition);
-        splitObject.SetBeforeMinChiSquaredPerHit(beforeDirectionFitObject.GetMinChiSquaredPerHit());
-        splitObject.SetAfterMinChiSquaredPerHit(beforeDirectionFitObject.GetMinChiSquaredPerHit() - ChiSquaredPerHitChange);
-        splitObject.SetMinChiSquaredPerHitChange(ChiSquaredPerHitChange);
-        splitObject.SetBeforeNHits(hitChargeVector.size());
-        splitObject.SetSplitApplied(splitApplied);
-        splitObject.SetBeforeDeltaChiSquaredPerHit(beforeDirectionFitObject.GetDeltaChiSquaredPerHit());
     }
 }
 
@@ -964,7 +1143,12 @@ void TrackDirectionTool::CreateCalorimetricSplitHitVector(HitChargeVector &hitCh
 {
     std::vector<JumpObject> jumpObjects;
     this->FindJumpSplit(hitChargeVector, jumpObjects);
+
+    std::cout << "jumpObjects.size(): " << jumpObjects.size() << std::endl;
+
     this->FindPlateauSplit(hitChargeVector, jumpObjects);
+
+    std::cout << "With plateau jumpObjects.size(): " << jumpObjects.size() << std::endl;
 
     for (auto &jumpObject: jumpObjects)
         splitPositions.push_back(jumpObject.GetLongitudinalPosition());
@@ -972,6 +1156,7 @@ void TrackDirectionTool::CreateCalorimetricSplitHitVector(HitChargeVector &hitCh
     float QoverWRange(0.f);
     this->GetQoverWRange(hitChargeVector, QoverWRange);
 
+    //only try kink split if no jumps found
     auto it = find_if(jumpObjects.begin(), jumpObjects.end(), [&QoverWRange](JumpObject& obj) {return obj.GetJumpValue() > 0.1 * QoverWRange;});
 
     if (it == jumpObjects.end())
@@ -1372,6 +1557,8 @@ void TrackDirectionTool::FindJumpSplit(HitChargeVector &hitChargeVector, std::ve
     bothVectors.push_back(hitChargeVector);
     //bothVectors.push_back(binnedHitChargeVector);
 
+    float minimumJumpOffset(3.f);
+
     for (HitChargeVector &vector : bothVectors)
     {
         for (int jumpRange = 1; jumpRange <= 5; jumpRange++)
@@ -1379,14 +1566,55 @@ void TrackDirectionTool::FindJumpSplit(HitChargeVector &hitChargeVector, std::ve
             for (int i = 0; i <= vector.size() - (jumpRange + 1); i++)
             {
                 //float combinedUncertainty = vector.at(i).GetUncertainty() + vector.at(i + jumpRange).GetUncertainty();
-                float binJump = (std::abs(vector.at(i).GetChargeOverWidth() - vector.at(i + jumpRange).GetChargeOverWidth()));
-                //binJump /= combinedUncertainty;
+                float jumpSize = (std::abs(vector.at(i).GetChargeOverWidth() - vector.at(i + jumpRange).GetChargeOverWidth()));
+                //jumpSize /= combinedUncertainty;
 
-                float jumpPosition(vector.at(i + jumpRange).GetLongitudinalPosition());
-                JumpObject jumpObject(jumpPosition, binJump);
+                if (jumpSize < 0.5)
+                    continue;
 
-                if (vector.size() == hitChargeVector.size())
+                //std::cout << normalJumps.size() << std::endl;
+
+                //std::cout << vector.at(i).GetLongitudinalPosition() << std::endl;
+                //std::cout << jumpSize << std::endl;
+
+                float jumpPosition(vector.at(i).GetLongitudinalPosition());
+                JumpObject jumpObject(jumpPosition, jumpSize);
+
+                if (normalJumps.size() == 0)
                     normalJumps.push_back(jumpObject);
+                else
+                {
+                    JumpObject closestJumpObject;
+                    float smallestPositionOffset(1e6);
+
+                    for (auto &jumpObjectIter : normalJumps)
+                    {
+                        if (std::abs(jumpObjectIter.GetLongitudinalPosition() - jumpPosition) < smallestPositionOffset)
+                        {
+                            closestJumpObject = jumpObjectIter;
+                            smallestPositionOffset = std::abs(jumpObjectIter.GetLongitudinalPosition() - jumpPosition);
+                        }
+                    }
+
+                    float closestPosition(closestJumpObject.GetLongitudinalPosition()), closestJumpValue(closestJumpObject.GetJumpValue());
+                    
+                    if (std::abs(jumpPosition - closestPosition) < minimumJumpOffset && jumpSize > closestJumpValue)
+                    {
+                        normalJumps.erase(std::remove(normalJumps.begin(), normalJumps.end(), closestJumpObject), normalJumps.end());
+                        normalJumps.push_back(jumpObject);
+                        closestPosition = jumpPosition;
+                        closestJumpValue = jumpSize;
+                    }
+                    else if (std::abs(jumpPosition - closestPosition) >= minimumJumpOffset)
+                    {
+                        normalJumps.push_back(jumpObject);
+                        closestPosition = jumpPosition;
+                        closestJumpValue = jumpSize;
+                    }
+                }
+
+                //if (vector.size() == hitChargeVector.size())
+                //    normalJumps.push_back(jumpObject);
 
                 //if (vector.size() == binnedHitChargeVector.size())
                 //    binnedJumps.push_back(jumpObject);
@@ -1394,16 +1622,30 @@ void TrackDirectionTool::FindJumpSplit(HitChargeVector &hitChargeVector, std::ve
         }
     }
 
+    jumpObjects = normalJumps;   
+
+    /*
     std::sort(normalJumps.begin(), normalJumps.end(), SortJumpVector);
     std::sort(binnedJumps.begin(), binnedJumps.end(), SortJumpVector);
 
-    int cutOff(10), nAdded(0);
-    float latestJumpPosition(0.f), latestJumpValue(0.f), range(3.f);
+    int cutOff(10); 
+    //int nAdded(0);
+    //float latestJumpPosition(0.f), latestJumpValue(0.f), range(3.f);
 
+    for (int i = 0; i < cutOff; i++)
+    {
+        JumpObject jumpObject(normalJumps.at(i));
+        jumpObjects.push_back(normalJumps.at(i));
+    }
+     */
+
+    /*
     for (int i = 0; i < normalJumps.size(); i++)
     {
         if (nAdded >= cutOff)
             break;
+
+        std::cout << normalJumps.at(i).GetLongitudinalPosition() << std::endl;
 
         JumpObject jumpObject(normalJumps.at(i));
 
@@ -1419,7 +1661,8 @@ void TrackDirectionTool::FindJumpSplit(HitChargeVector &hitChargeVector, std::ve
         }
         else
         {
-            if ((jumpObject.GetLongitudinalPosition() - latestJumpPosition) < range && jumpObject.GetJumpValue() > latestJumpValue)
+            std::cout << std::abs(jumpObject.GetLongitudinalPosition() - latestJumpPosition) << std::endl;
+            if (std::abs(jumpObject.GetLongitudinalPosition() - latestJumpPosition) < range && jumpObject.GetJumpValue() > latestJumpValue)
             {
                 jumpObjects.pop_back();
                 jumpObjects.push_back(normalJumps.at(i));
@@ -1435,7 +1678,9 @@ void TrackDirectionTool::FindJumpSplit(HitChargeVector &hitChargeVector, std::ve
             }
         }
     }
+    */
 
+    /*
     nAdded = 0;
 
     for (int i = 0; i < binnedJumps.size(); i++)
@@ -1473,6 +1718,7 @@ void TrackDirectionTool::FindJumpSplit(HitChargeVector &hitChargeVector, std::ve
             }
         }
     }
+    */
 }
 
 //--------------------------------------------------------------------------------------------------------------------------------
@@ -1829,9 +2075,9 @@ void TrackDirectionTool::GetCalorimetricDirection(const Cluster* pTargetClusterW
     */
 
     this->FitHitChargeVector(filteredHitChargeVector, directionFitObject);
-
+    
     this->TestHypothesisOne(directionFitObject);
-    this->TestHypothesisTwo(directionFitObject);
+    this->TestHypothesisTwo(pTargetClusterW, directionFitObject);
     this->TestHypothesisThree(directionFitObject);
 }
 
@@ -1851,7 +2097,7 @@ void TrackDirectionTool::TestHypothesisOne(DirectionFitObject &directionFitObjec
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void TrackDirectionTool::TestHypothesisTwo(DirectionFitObject &directionFitObject)
+void TrackDirectionTool::TestHypothesisTwo(const Cluster *const pCluster, DirectionFitObject &directionFitObject)
 {
     if (directionFitObject.GetHypothesis() == 1 || m_enableSplitting == false)
         return;
@@ -1861,12 +2107,15 @@ void TrackDirectionTool::TestHypothesisTwo(DirectionFitObject &directionFitObjec
 
     bool splitApplied(false);
     SplitObject splitObject;
-    this->ParticleSplitting(filteredHitChargeVector, backwardsSplitResult, forwardsSplitResult, splitApplied, splitObject);
+    this->ParticleSplitting(pCluster, filteredHitChargeVector, backwardsSplitResult, forwardsSplitResult, splitApplied, splitObject);
 
     DirectionFitObject largestFitObject(forwardsSplitResult.GetNHits() == forwardsSplitResult.GetNHits() ? forwardsSplitResult : backwardsSplitResult);
 
     //To create a chi squared change scatter plot
     splitObject.SetAfterNHits(largestFitObject.GetNHits());
+
+    std::cout << "splitObject.GetSplitCorrect(): " << splitObject.GetSplitCorrect() << std::endl;
+
     directionFitObject.SetSplitObject(splitObject);
 
     if (splitApplied)
@@ -1889,6 +2138,106 @@ void TrackDirectionTool::TestHypothesisTwo(DirectionFitObject &directionFitObjec
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+bool TrackDirectionTool::IsClusterTwoParticles(const Cluster *const pCluster, TrackDirectionTool::HitChargeVector forwardsFitCharges, TrackDirectionTool::HitChargeVector backwardsFitCharges)
+{
+    bool isTwoParticles(false);
+
+    OrderedCaloHitList orderedCaloHitList(pCluster->GetOrderedCaloHitList());
+    CaloHitList caloHitList;
+    orderedCaloHitList.FillCaloHitList(caloHitList);
+
+    int nContributingParticles(0), contributionThreshold(10);
+    int nSecondaryHits(0);
+    float chargeContributionThreshold(0.5);
+    std::map<int, int> primaryPDGToContributionMap;
+
+    const MCParticle *const pMCParticle(MCParticleHelper::GetMainMCParticle(pCluster));
+
+    for (const CaloHit* pCaloHit : caloHitList)
+    {
+        MCParticleWeightMap mcParticleWeightMap(pCaloHit->GetMCParticleWeightMap());
+        for (MCParticleWeightMap::const_iterator mapIter = mcParticleWeightMap.begin(), mapIterEnd = mcParticleWeightMap.end(); mapIter != mapIterEnd; ++mapIter)
+        {
+            int primaryPDG(mapIter->first->GetParticleId());
+            if (primaryPDG == 11 && ((pCaloHit->GetPositionVector().GetZ() > pMCParticle->GetVertex().GetZ() && pCaloHit->GetPositionVector().GetZ() < pMCParticle->GetEndpoint().GetZ()) || (pCaloHit->GetPositionVector().GetZ() < pMCParticle->GetVertex().GetZ() && pCaloHit->GetPositionVector().GetZ() > pMCParticle->GetEndpoint().GetZ())))
+                primaryPDG = 13;
+
+            float contribution(mapIter->second);
+
+            if (primaryPDGToContributionMap.find(primaryPDG) == primaryPDGToContributionMap.end())
+            {
+                if (contribution > chargeContributionThreshold)
+                    primaryPDGToContributionMap[primaryPDG] = 1;
+            }
+            else
+            {
+                if (contribution > chargeContributionThreshold)
+                    primaryPDGToContributionMap.at(primaryPDG)++;
+            }
+        }
+    }
+
+    for (auto &entry : primaryPDGToContributionMap)
+    {
+        if (entry.first != m_targetParticlePDG)
+            nSecondaryHits += entry.second;
+
+        if (entry.second >= contributionThreshold)
+            nContributingParticles++;
+    }  
+
+    float chargeContributionThreshold2(0.25);
+    int backwardsNonPrimaryHits(0), backwardsPrimaryHits(0);
+    for (TrackDirectionTool::HitCharge &hitCharge : backwardsFitCharges)
+    {        
+        const pandora::CaloHit* pCaloHit(hitCharge.GetCaloHit());
+        MCParticleWeightMap mcParticleWeightMap(pCaloHit->GetMCParticleWeightMap());
+
+        for (MCParticleWeightMap::const_iterator mapIter = mcParticleWeightMap.begin(), mapIterEnd = mcParticleWeightMap.end(); mapIter != mapIterEnd; ++mapIter)
+        {        
+            int primaryPDG(mapIter->first->GetParticleId());
+
+            float contribution(mapIter->second);
+            if (contribution >= chargeContributionThreshold2 && primaryPDG != m_targetParticlePDG)
+                backwardsNonPrimaryHits++;
+            else if (contribution >= chargeContributionThreshold2 && primaryPDG == m_targetParticlePDG)
+                backwardsPrimaryHits++;
+        }    
+    }    
+
+    int forwardsNonPrimaryHits(0), forwardsPrimaryHits(0);
+    for (TrackDirectionTool::HitCharge &hitCharge : forwardsFitCharges)
+    {        
+        const pandora::CaloHit* pCaloHit(hitCharge.GetCaloHit());
+        MCParticleWeightMap mcParticleWeightMap(pCaloHit->GetMCParticleWeightMap());
+
+        for (MCParticleWeightMap::const_iterator mapIter = mcParticleWeightMap.begin(), mapIterEnd = mcParticleWeightMap.end(); mapIter != mapIterEnd; ++mapIter)
+        {        
+            int primaryPDG(mapIter->first->GetParticleId());
+            float contribution(mapIter->second);
+
+            if (contribution >= chargeContributionThreshold2 && primaryPDG != m_targetParticlePDG)
+                forwardsNonPrimaryHits++;
+            else if (contribution >= chargeContributionThreshold2 && primaryPDG == m_targetParticlePDG)
+                forwardsPrimaryHits++;
+        }    
+    }    
+
+    float forwardsImpurityFraction((static_cast<float>(forwardsNonPrimaryHits))/forwardsFitCharges.size()), backwardsImpurityFraction(((float)backwardsNonPrimaryHits)/backwardsFitCharges.size());
+
+    std::cout << "nSecondaryHits: " << nSecondaryHits << std::endl;
+
+    std::cout << "forwardsImpurityFraction: " << forwardsImpurityFraction << std::endl;
+    std::cout << "backwardsImpurityFraction: " << backwardsImpurityFraction << std::endl;
+
+    if (nSecondaryHits >= 10 || forwardsImpurityFraction > 0.8 || backwardsImpurityFraction > 0.8)
+        isTwoParticles= true;
+
+    return isTwoParticles;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 void TrackDirectionTool::TestHypothesisThree(DirectionFitObject &directionFitObject)
 {
     if (directionFitObject.GetHypothesis() == 1 || directionFitObject.GetHypothesis() == 2 || m_enableFragmentRemoval == false)
@@ -1904,6 +2253,15 @@ void TrackDirectionTool::TestHypothesisThree(DirectionFitObject &directionFitObj
     bool likelyCorrectFragmentRemoval(directionFitObject.GetDirectionEstimate() != fragmentRemovalDirectionFitObject.GetDirectionEstimate() && directionFitObject.GetMinChiSquaredPerHit() - fragmentRemovalDirectionFitObject.GetMinChiSquaredPerHit() >= 2.0);
 
     SplitObject frObject(filteredHitChargeVector.size(), fragmentlessHitChargeVector.size(), directionFitObject.GetMinChiSquaredPerHit(), fragmentRemovalDirectionFitObject.GetMinChiSquaredPerHit(), directionFitObject.GetMinChiSquaredPerHit() - fragmentRemovalDirectionFitObject.GetMinChiSquaredPerHit(), 0.f);
+
+    if (m_useMCInformation)
+    {
+        bool splitCorrect((directionFitObject.GetDirectionEstimate() != globalTrueDirection && fragmentRemovalDirectionFitObject.GetDirectionEstimate() == globalTrueDirection) ? true : false);
+        frObject.SetSplitCorrect(splitCorrect);
+        frObject.SetBeforeForwardsChiSquaredPerHit(directionFitObject.GetForwardsChiSquaredPerHit());
+        frObject.SetBeforeBackwardsChiSquaredPerHit(directionFitObject.GetBackwardsChiSquaredPerHit());
+    }
+
     directionFitObject.SetFRObject(frObject); 
 
     if (likelyCorrectFragmentRemoval)
@@ -1996,6 +2354,113 @@ bool TrackDirectionTool::SortJumpVector(JumpObject &jumpObject1, JumpObject &jum
 
 //----------------------------------------------------------------------------------------------------------------------------------
 
+void TrackDirectionTool::DirectionFitObject::DrawEnhancedFit()
+{
+    float firstLengthPosition((*(m_hitchargevector.begin())).GetLongitudinalPosition());
+    float lastLengthPosition((*(std::prev(m_hitchargevector.end(), 1))).GetLongitudinalPosition());
+    float trackLength(lastLengthPosition - firstLengthPosition);
+
+    HitChargeVector hitChargeVector(m_hitchargevector), forwardsRecoHits(m_forwardsrecohits), backwardsRecoHits(m_backwardsrecohits);
+
+    TGraphErrors *pureHits = new TGraphErrors(hitChargeVector.size());
+    TGraphErrors *impureHits = new TGraphErrors(hitChargeVector.size());
+    TGraphErrors *fitHits = new TGraphErrors(forwardsRecoHits.size());
+    int n(1), i(1);
+
+    std::cout << "Drawing " << hitChargeVector.size() << " hits." << std::endl;
+
+    float minCharge(1e6), maxCharge(0);
+    float minL2D(1e6), maxL2D(0);
+    bool drawFit(true);
+
+    for (HitCharge hitCharge : hitChargeVector)
+    {    
+        const auto pCaloHit(hitCharge.GetCaloHit());
+        const MCParticleWeightMap &hitMCParticleWeightMap(pCaloHit->GetMCParticleWeightMap());
+
+        const auto pMCParticle(MCParticleHelper::GetMainMCParticle(pCaloHit));
+        const float weight(hitMCParticleWeightMap.at(pMCParticle));
+
+        if (hitCharge.GetChargeOverWidth() < minCharge)
+            minCharge = hitCharge.GetChargeOverWidth();
+
+        if (hitCharge.GetChargeOverWidth() > maxCharge)
+            maxCharge = hitCharge.GetChargeOverWidth();
+
+        if (hitCharge.GetLongitudinalPosition() < minL2D)
+            minL2D = hitCharge.GetLongitudinalPosition();
+
+        if (hitCharge.GetLongitudinalPosition() > maxL2D)
+            maxL2D = hitCharge.GetLongitudinalPosition();
+
+        if (n == 0)
+        {
+            std::cout << "weight: " << weight << std::endl;
+            std::cout << "PDG: " << pMCParticle->GetParticleId() << std::endl;
+        }
+
+        if (weight >= 0.85)
+            pureHits->SetPoint(n, hitCharge.GetLongitudinalPosition(), hitCharge.GetChargeOverWidth());
+        else
+            impureHits->SetPoint(n, hitCharge.GetLongitudinalPosition(), hitCharge.GetChargeOverWidth());
+        n++; 
+    }    
+
+    if (drawFit && (m_forwardschisquared/m_nhits < m_backwardschisquared/m_nhits || m_hypothesis == 2))
+    {    
+        for (HitCharge hitCharge : forwardsRecoHits)
+        {    
+            fitHits->SetPoint(i, hitCharge.GetLongitudinalPosition(), hitCharge.GetChargeOverWidth());
+            i++; 
+        }    
+
+    }    
+
+    if (drawFit && (m_forwardschisquared/m_nhits > m_backwardschisquared/m_nhits || m_hypothesis == 2))
+    {    
+        for (HitCharge hitCharge : backwardsRecoHits)
+        {    
+            fitHits->SetPoint(i, hitCharge.GetLongitudinalPosition(), hitCharge.GetChargeOverWidth());
+            i++; 
+        }    
+    }    
+
+    if (hitChargeVector.size() != 0 && forwardsRecoHits.size() != 0 && backwardsRecoHits.size() != 0)
+    {
+        TCanvas *canvas = new TCanvas("canvas", "canvas", 1200, 900);
+        canvas->cd();
+
+        pureHits->GetXaxis()->SetLimits(minL2D -0.05 * trackLength, maxL2D + 0.05 * trackLength);
+        pureHits->GetYaxis()->SetRangeUser(0.9 * minCharge, 0.1 * minCharge +  maxCharge);
+        pureHits->SetMarkerStyle(20);
+        pureHits->SetMarkerSize(0.5);
+        pureHits->SetMarkerColor(kBlack);
+
+        impureHits->SetMarkerStyle(20);
+        impureHits->SetMarkerSize(0.5);
+        impureHits->SetMarkerColor(kRed);
+
+        fitHits->SetMarkerStyle(20);
+        fitHits->SetMarkerSize(0.5);
+        fitHits->SetMarkerColor(kMagenta);
+
+        pureHits->SetTitle(";Longitudinal Coordinate L_{2D} (cm); #tilde{Q} (MeV/cm)"); //Bethe-Bloch Theory Fit
+        pureHits->Draw("AP");
+        impureHits->Draw("Psame");
+
+        if (drawFit)
+            fitHits->Draw("Psame");
+
+        //PANDORA_MONITORING_API(Pause(this->GetPandora()));
+        canvas->SaveAs("fit.pdf");
+        delete canvas;
+    }    
+
+    delete pureHits;
+    delete impureHits;
+    delete fitHits;
+}
+
 StatusCode TrackDirectionTool::ReadSettings(const TiXmlHandle xmlHandle)
 {
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
@@ -2023,7 +2488,13 @@ StatusCode TrackDirectionTool::ReadSettings(const TiXmlHandle xmlHandle)
         "WriteTable", m_writeTable));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "UseMCInformation", m_useMCInformation));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "FileName", m_lookupTableFileName));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "OutputFile", m_fileName));
 
     return STATUS_CODE_SUCCESS;
 }
