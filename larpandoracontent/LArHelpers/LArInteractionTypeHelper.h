@@ -190,7 +190,19 @@ public:
         BEAM_PARTICLE_KAON_MINUS,
         BEAM_PARTICLE_OTHER,
         OTHER_INTERACTION,
-        ALL_INTERACTIONS
+        ALL_INTERACTIONS,
+        CCMEC_MU,
+        CCMEC_MU_P,
+        CCMEC_MU_P_P,
+        CCMEC_MU_P_P_P,
+        CCMEC_MU_P_P_P_P,
+        CCMEC_MU_P_P_P_P_P,
+        NCMEC_MU,
+        NCMEC_MU_P,
+        NCMEC_MU_P_P,
+        NCMEC_MU_P_P_P,
+        NCMEC_MU_P_P_P_P,
+        NCMEC_MU_P_P_P_P_P
     };
 
     /**
@@ -211,6 +223,8 @@ public:
      *  @return string
      */
     static std::string ToString(const InteractionType interactionType);
+
+    static LArInteractionTypeHelper::InteractionType FromString(std::string interactionTypeString);
 };
 
 } // namespace lar_content

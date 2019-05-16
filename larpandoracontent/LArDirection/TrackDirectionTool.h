@@ -95,6 +95,11 @@ public:
 
         bool                                       m_intails;
 
+        bool operator==(const HitCharge &rhs)
+        {
+            return this->m_longitudinalposition == rhs.m_longitudinalposition;
+        };
+
     private:
         const pandora::CaloHit*                    m_calohit;
         float                                      m_longitudinalposition;    ///<
@@ -166,6 +171,9 @@ public:
 
         void SetSplitCorrect(int isCorrect);
         int GetSplitCorrect();
+        
+        void SetJumpSize(float &jumpSize);
+        float GetJumpSize();
     
 
     private:
@@ -180,6 +188,7 @@ public:
         float                                       m_beforeforwardschisquaredperhit;        
         float                                       m_beforebackwardschisquaredperhit;        
         int                                         m_splitcorrect;
+        float                                       m_jumpsize;
     };
 
     class LookupTable
@@ -373,6 +382,7 @@ public:
     int                     m_numberTrackEndHits;
     float                   m_endpointProtectionFraction;
     bool                    m_enableFragmentRemoval;
+    bool                    m_enableBraggPeakFilter;
     bool                    m_enableSplitting;
 
     double                  m_tableInitialEnergy;
@@ -412,7 +422,7 @@ public:
 
     void SimpleTrackEndFilter(HitChargeVector &hitChargeVector);
 
-    void TrackEndFilter(HitChargeVector &hitChargeVector, DirectionFitObject &directionFitObject);
+    void TrackEndFilter(HitChargeVector &hitChargeVector, DirectionFitObject &directionFitObject, DirectionFitObject &beforeDirectionFitObject);
 
     void Regularise(HitChargeVector &hitChargeVector, HitChargeVector &filteredHitChargeVector);
 
@@ -723,7 +733,8 @@ inline TrackDirectionTool::SplitObject::SplitObject() :
     m_beforedeltachisquaredperhit(0.f),
     m_beforeforwardschisquaredperhit(0.f),
     m_beforebackwardschisquaredperhit(0.f),
-    m_splitcorrect(-1)        
+    m_splitcorrect(-1),
+    m_jumpsize(0.f) 
 {
 }
 
@@ -740,7 +751,8 @@ inline TrackDirectionTool::SplitObject::SplitObject(int beforeNumberHits, int af
     m_beforedeltachisquaredperhit(0.f),
     m_beforeforwardschisquaredperhit(0.f),
     m_beforebackwardschisquaredperhit(0.f),
-    m_splitcorrect(-1)        
+    m_splitcorrect(-1),        
+    m_jumpsize(0.f) 
 {
 }
 
@@ -757,7 +769,8 @@ inline TrackDirectionTool::SplitObject::SplitObject(int beforeNumberHits, int af
     m_beforedeltachisquaredperhit(beforeDeltaChiSquaredPerHit),        
     m_beforeforwardschisquaredperhit(0.f),
     m_beforebackwardschisquaredperhit(0.f),
-    m_splitcorrect(-1)        
+    m_splitcorrect(-1),        
+    m_jumpsize(0.f) 
 {
 }
 
@@ -871,6 +884,16 @@ inline void TrackDirectionTool::SplitObject::SetSplitCorrect(int isCorrect)
 inline int TrackDirectionTool::SplitObject::GetSplitCorrect()
 {
     return m_splitcorrect;
+}
+
+inline void TrackDirectionTool::SplitObject::SetJumpSize(float &jumpSize)
+{
+    m_jumpsize = jumpSize;
+}
+
+inline float TrackDirectionTool::SplitObject::GetJumpSize()
+{
+    return m_jumpsize;
 }
 
 inline TrackDirectionTool::LookupTable::LookupTable()

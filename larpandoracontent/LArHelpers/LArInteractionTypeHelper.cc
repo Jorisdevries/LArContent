@@ -9,6 +9,7 @@
 #include "larpandoracontent/LArHelpers/LArInteractionTypeHelper.h"
 #include "larpandoracontent/LArHelpers/LArMCParticleHelper.h"
 #include "larpandoracontent/LArHelpers/LArMonitoringHelper.h"
+#include <regex>
 
 using namespace pandora;
 
@@ -265,6 +266,55 @@ LArInteractionTypeHelper::InteractionType LArInteractionTypeHelper::GetInteracti
     if (1096 == nuNuanceCode) return NCCOH;
     if (1097 == nuNuanceCode) return CCCOH;
 
+    //logic to deconstruct new nuance codes >= 5000 (if there are kaons we ignore this bit: kaons are not included in the interactionType enum anyway)
+    if (nuNuanceCode >= 5000 && nKaonPlus == 0 && nKaonMinus == 0)
+    {
+        //deconstruct custom nuance code into CC/NC and mode
+        int mutableNuNuanceCode(nuNuanceCode);
+        std::vector<int> baseTenDeconstruction;
+
+        while (mutableNuNuanceCode > 0)
+        {
+            baseTenDeconstruction.push_back(mutableNuNuanceCode % 10);
+            mutableNuNuanceCode /= 10;
+        }
+
+        int CCNC(baseTenDeconstruction.at(2));
+        int mode(10 * baseTenDeconstruction.at(1) + baseTenDeconstruction.at(0));
+        std::string interactionTypeString("");
+
+        //define CC/NC
+        if (CCNC == 1)
+            interactionTypeString.append("CC");
+        else
+            interactionTypeString.append("NC");
+        
+        //add interaction type, if not defined in modeToInteractionTypeMap bail out and return OTHER_INTERACTION
+        std::map<int, std::string> modeToInteractionTypeMap = {{0, "QEL_"}, {1, "RES_"}, {2, "DIS_"}, {3, "COH_"}, {10, "MEC_"}};
+
+        if (modeToInteractionTypeMap.find(mode) != modeToInteractionTypeMap.end())
+            interactionTypeString.append(modeToInteractionTypeMap.at(mode));
+        else
+            return OTHER_INTERACTION;
+
+        //add particles
+        std::vector<std::pair<int, std::string>> particleCountsWithNames = {{nMuons, "MU_"}, {nElectrons, "E_"}, {nProtons, "P_"}, 
+                                                                            {nPiPlus, "PIPLUS_"}, {nPiMinus, "PIMINUS_"}, {nPhotons, "PHOTON_"}};
+
+        for (const auto &pair : particleCountsWithNames)
+        {
+            for (int i = 0; i < pair.first; ++i)
+                interactionTypeString.append(pair.second);
+        } 
+
+        //remove trailing underscore
+        interactionTypeString.erase(interactionTypeString.size() - 1);
+
+        //map two photons to PIZERO, as before
+        interactionTypeString = std::regex_replace(interactionTypeString, std::regex("PHOTON_PHOTON"), "PIZERO");
+        return FromString(interactionTypeString); 
+    }
+    
     return OTHER_INTERACTION;
 }
 
@@ -439,8 +489,204 @@ std::string LArInteractionTypeHelper::ToString(const InteractionType interaction
     case BEAM_PARTICLE_OTHER: return "BEAM_PARTICLE_OTHER";
     case OTHER_INTERACTION: return "OTHER_INTERACTION";
     case ALL_INTERACTIONS: return "ALL_INTERACTIONS";
+    case CCMEC_MU: return "CCMEC_MU";
+    case CCMEC_MU_P: return "CCMEC_MU_P";
+    case CCMEC_MU_P_P: return "CCMEC_MU_P_P";
+    case CCMEC_MU_P_P_P: return "CCMEC_MU_P_P_P";
+    case CCMEC_MU_P_P_P_P: return "CCMEC_MU_P_P_P_P";
+    case CCMEC_MU_P_P_P_P_P: return "CCMEC_MU_P_P_P_P_P";
+    case NCMEC_MU: return "NCMEC_MU";
+    case NCMEC_MU_P: return "NCMEC_MU_P";
+    case NCMEC_MU_P_P: return "NCMEC_MU_P_P";
+    case NCMEC_MU_P_P_P: return "NCMEC_MU_P_P_P";
+    case NCMEC_MU_P_P_P_P: return "NCMEC_MU_P_P_P_P";
+    case NCMEC_MU_P_P_P_P_P: return "NCMEC_MU_P_P_P_P_P";
     default: return "UNKNOWN";
     }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+LArInteractionTypeHelper::InteractionType LArInteractionTypeHelper::FromString(std::string interactionTypeString)
+{
+    if (interactionTypeString == "CCQEL_MU") return CCQEL_MU;
+    else if (interactionTypeString == "CCQEL_MU_P") return CCQEL_MU_P;
+    else if (interactionTypeString == "CCQEL_MU_P_P") return CCQEL_MU_P_P;
+    else if (interactionTypeString == "CCQEL_MU_P_P_P") return CCQEL_MU_P_P_P;
+    else if (interactionTypeString == "CCQEL_MU_P_P_P_P") return CCQEL_MU_P_P_P_P;
+    else if (interactionTypeString == "CCQEL_MU_P_P_P_P_P") return CCQEL_MU_P_P_P_P_P;
+    else if (interactionTypeString == "CCQEL_E") return CCQEL_E;
+    else if (interactionTypeString == "CCQEL_E_P") return CCQEL_E_P;
+    else if (interactionTypeString == "CCQEL_E_P_P") return CCQEL_E_P_P;
+    else if (interactionTypeString == "CCQEL_E_P_P_P") return CCQEL_E_P_P_P;
+    else if (interactionTypeString == "CCQEL_E_P_P_P_P") return CCQEL_E_P_P_P_P;
+    else if (interactionTypeString == "CCQEL_E_P_P_P_P_P") return CCQEL_E_P_P_P_P_P;
+    else if (interactionTypeString == "NCQEL_P") return NCQEL_P;
+    else if (interactionTypeString == "NCQEL_P_P") return NCQEL_P_P;
+    else if (interactionTypeString == "NCQEL_P_P_P") return NCQEL_P_P_P;
+    else if (interactionTypeString == "NCQEL_P_P_P_P") return NCQEL_P_P_P_P;
+    else if (interactionTypeString == "NCQEL_P_P_P_P_P") return NCQEL_P_P_P_P_P;
+    else if (interactionTypeString == "CCRES_MU") return CCRES_MU;
+    else if (interactionTypeString == "CCRES_MU_P") return CCRES_MU_P;
+    else if (interactionTypeString == "CCRES_MU_P_P") return CCRES_MU_P_P;
+    else if (interactionTypeString == "CCRES_MU_P_P_P") return CCRES_MU_P_P_P;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_P") return CCRES_MU_P_P_P_P;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_P_P") return CCRES_MU_P_P_P_P_P;
+    else if (interactionTypeString == "CCRES_MU_PIPLUS") return CCRES_MU_PIPLUS;
+    else if (interactionTypeString == "CCRES_MU_P_PIPLUS") return CCRES_MU_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_MU_P_P_PIPLUS") return CCRES_MU_P_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_PIPLUS") return CCRES_MU_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_P_PIPLUS") return CCRES_MU_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_P_P_PIPLUS") return CCRES_MU_P_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_MU_PHOTON") return CCRES_MU_PHOTON;
+    else if (interactionTypeString == "CCRES_MU_P_PHOTON") return CCRES_MU_P_PHOTON;
+    else if (interactionTypeString == "CCRES_MU_P_P_PHOTON") return CCRES_MU_P_P_PHOTON;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_PHOTON") return CCRES_MU_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_P_PHOTON") return CCRES_MU_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_P_P_PHOTON") return CCRES_MU_P_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCRES_MU_PIZERO") return CCRES_MU_PIZERO;
+    else if (interactionTypeString == "CCRES_MU_P_PIZERO") return CCRES_MU_P_PIZERO;
+    else if (interactionTypeString == "CCRES_MU_P_P_PIZERO") return CCRES_MU_P_P_PIZERO;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_PIZERO") return CCRES_MU_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_P_PIZERO") return CCRES_MU_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCRES_MU_P_P_P_P_P_PIZERO") return CCRES_MU_P_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCRES_E") return CCRES_E;
+    else if (interactionTypeString == "CCRES_E_P") return CCRES_E_P;
+    else if (interactionTypeString == "CCRES_E_P_P") return CCRES_E_P_P;
+    else if (interactionTypeString == "CCRES_E_P_P_P") return CCRES_E_P_P_P;
+    else if (interactionTypeString == "CCRES_E_P_P_P_P") return CCRES_E_P_P_P_P;
+    else if (interactionTypeString == "CCRES_E_P_P_P_P_P") return CCRES_E_P_P_P_P_P;
+    else if (interactionTypeString == "CCRES_E_PIPLUS") return CCRES_E_PIPLUS;
+    else if (interactionTypeString == "CCRES_E_P_PIPLUS") return CCRES_E_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_E_P_P_PIPLUS") return CCRES_E_P_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_E_P_P_P_PIPLUS") return CCRES_E_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_E_P_P_P_P_PIPLUS") return CCRES_E_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_E_P_P_P_P_P_PIPLUS") return CCRES_E_P_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCRES_E_PHOTON") return CCRES_E_PHOTON;
+    else if (interactionTypeString == "CCRES_E_P_PHOTON") return CCRES_E_P_PHOTON;
+    else if (interactionTypeString == "CCRES_E_P_P_PHOTON") return CCRES_E_P_P_PHOTON;
+    else if (interactionTypeString == "CCRES_E_P_P_P_PHOTON") return CCRES_E_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCRES_E_P_P_P_P_PHOTON") return CCRES_E_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCRES_E_P_P_P_P_P_PHOTON") return CCRES_E_P_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCRES_E_PIZERO") return CCRES_E_PIZERO;
+    else if (interactionTypeString == "CCRES_E_P_PIZERO") return CCRES_E_P_PIZERO;
+    else if (interactionTypeString == "CCRES_E_P_P_PIZERO") return CCRES_E_P_P_PIZERO;
+    else if (interactionTypeString == "CCRES_E_P_P_P_PIZERO") return CCRES_E_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCRES_E_P_P_P_P_PIZERO") return CCRES_E_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCRES_E_P_P_P_P_P_PIZERO") return CCRES_E_P_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "NCRES_P") return NCRES_P;
+    else if (interactionTypeString == "NCRES_P_P") return NCRES_P_P;
+    else if (interactionTypeString == "NCRES_P_P_P") return NCRES_P_P_P;
+    else if (interactionTypeString == "NCRES_P_P_P_P") return NCRES_P_P_P_P;
+    else if (interactionTypeString == "NCRES_P_P_P_P_P") return NCRES_P_P_P_P_P;
+    else if (interactionTypeString == "NCRES_PIPLUS") return NCRES_PIPLUS;
+    else if (interactionTypeString == "NCRES_P_PIPLUS") return NCRES_P_PIPLUS;
+    else if (interactionTypeString == "NCRES_P_P_PIPLUS") return NCRES_P_P_PIPLUS;
+    else if (interactionTypeString == "NCRES_P_P_P_PIPLUS") return NCRES_P_P_P_PIPLUS;
+    else if (interactionTypeString == "NCRES_P_P_P_P_PIPLUS") return NCRES_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "NCRES_P_P_P_P_P_PIPLUS") return NCRES_P_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "NCRES_PIMINUS") return NCRES_PIMINUS;
+    else if (interactionTypeString == "NCRES_P_PIMINUS") return NCRES_P_PIMINUS;
+    else if (interactionTypeString == "NCRES_P_P_PIMINUS") return NCRES_P_P_PIMINUS;
+    else if (interactionTypeString == "NCRES_P_P_P_PIMINUS") return NCRES_P_P_P_PIMINUS;
+    else if (interactionTypeString == "NCRES_P_P_P_P_PIMINUS") return NCRES_P_P_P_P_PIMINUS;
+    else if (interactionTypeString == "NCRES_P_P_P_P_P_PIMINUS") return NCRES_P_P_P_P_P_PIMINUS;
+    else if (interactionTypeString == "NCRES_PHOTON") return NCRES_PHOTON;
+    else if (interactionTypeString == "NCRES_P_PHOTON") return NCRES_P_PHOTON;
+    else if (interactionTypeString == "NCRES_P_P_PHOTON") return NCRES_P_P_PHOTON;
+    else if (interactionTypeString == "NCRES_P_P_P_PHOTON") return NCRES_P_P_P_PHOTON;
+    else if (interactionTypeString == "NCRES_P_P_P_P_PHOTON") return NCRES_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "NCRES_P_P_P_P_P_PHOTON") return NCRES_P_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "NCRES_PIZERO") return NCRES_PIZERO;
+    else if (interactionTypeString == "NCRES_P_PIZERO") return NCRES_P_PIZERO;
+    else if (interactionTypeString == "NCRES_P_P_PIZERO") return NCRES_P_P_PIZERO;
+    else if (interactionTypeString == "NCRES_P_P_P_PIZERO") return NCRES_P_P_P_PIZERO;
+    else if (interactionTypeString == "NCRES_P_P_P_P_PIZERO") return NCRES_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "NCRES_P_P_P_P_P_PIZERO") return NCRES_P_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCDIS_MU") return CCDIS_MU;
+    else if (interactionTypeString == "CCDIS_MU_P") return CCDIS_MU_P;
+    else if (interactionTypeString == "CCDIS_MU_P_P") return CCDIS_MU_P_P;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P") return CCDIS_MU_P_P_P;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_P") return CCDIS_MU_P_P_P_P;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_P_P") return CCDIS_MU_P_P_P_P_P;
+    else if (interactionTypeString == "CCDIS_MU_PIPLUS") return CCDIS_MU_PIPLUS;
+    else if (interactionTypeString == "CCDIS_MU_P_PIPLUS") return CCDIS_MU_P_PIPLUS;
+    else if (interactionTypeString == "CCDIS_MU_P_P_PIPLUS") return CCDIS_MU_P_P_PIPLUS;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_PIPLUS") return CCDIS_MU_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_P_PIPLUS") return CCDIS_MU_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_P_P_PIPLUS") return CCDIS_MU_P_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "CCDIS_MU_PHOTON") return CCDIS_MU_PHOTON;
+    else if (interactionTypeString == "CCDIS_MU_P_PHOTON") return CCDIS_MU_P_PHOTON;
+    else if (interactionTypeString == "CCDIS_MU_P_P_PHOTON") return CCDIS_MU_P_P_PHOTON;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_PHOTON") return CCDIS_MU_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_P_PHOTON") return CCDIS_MU_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_P_P_PHOTON") return CCDIS_MU_P_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "CCDIS_MU_PIZERO") return CCDIS_MU_PIZERO;
+    else if (interactionTypeString == "CCDIS_MU_P_PIZERO") return CCDIS_MU_P_PIZERO;
+    else if (interactionTypeString == "CCDIS_MU_P_P_PIZERO") return CCDIS_MU_P_P_PIZERO;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_PIZERO") return CCDIS_MU_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_P_PIZERO") return CCDIS_MU_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCDIS_MU_P_P_P_P_P_PIZERO") return CCDIS_MU_P_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "NCDIS_P") return NCDIS_P;
+    else if (interactionTypeString == "NCDIS_P_P") return NCDIS_P_P;
+    else if (interactionTypeString == "NCDIS_P_P_P") return NCDIS_P_P_P;
+    else if (interactionTypeString == "NCDIS_P_P_P_P") return NCDIS_P_P_P_P;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_P") return NCDIS_P_P_P_P_P;
+    else if (interactionTypeString == "NCDIS_PIPLUS") return NCDIS_PIPLUS;
+    else if (interactionTypeString == "NCDIS_P_PIPLUS") return NCDIS_P_PIPLUS;
+    else if (interactionTypeString == "NCDIS_P_P_PIPLUS") return NCDIS_P_P_PIPLUS;
+    else if (interactionTypeString == "NCDIS_P_P_P_PIPLUS") return NCDIS_P_P_P_PIPLUS;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_PIPLUS") return NCDIS_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_P_PIPLUS") return NCDIS_P_P_P_P_P_PIPLUS;
+    else if (interactionTypeString == "NCDIS_PIMINUS") return NCDIS_PIMINUS;
+    else if (interactionTypeString == "NCDIS_P_PIMINUS") return NCDIS_P_PIMINUS;
+    else if (interactionTypeString == "NCDIS_P_P_PIMINUS") return NCDIS_P_P_PIMINUS;
+    else if (interactionTypeString == "NCDIS_P_P_P_PIMINUS") return NCDIS_P_P_P_PIMINUS;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_PIMINUS") return NCDIS_P_P_P_P_PIMINUS;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_P_PIMINUS") return NCDIS_P_P_P_P_P_PIMINUS;
+    else if (interactionTypeString == "NCDIS_PHOTON") return NCDIS_PHOTON;
+    else if (interactionTypeString == "NCDIS_P_PHOTON") return NCDIS_P_PHOTON;
+    else if (interactionTypeString == "NCDIS_P_P_PHOTON") return NCDIS_P_P_PHOTON;
+    else if (interactionTypeString == "NCDIS_P_P_P_PHOTON") return NCDIS_P_P_P_PHOTON;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_PHOTON") return NCDIS_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_P_PHOTON") return NCDIS_P_P_P_P_P_PHOTON;
+    else if (interactionTypeString == "NCDIS_PIZERO") return NCDIS_PIZERO;
+    else if (interactionTypeString == "NCDIS_P_PIZERO") return NCDIS_P_PIZERO;
+    else if (interactionTypeString == "NCDIS_P_P_PIZERO") return NCDIS_P_P_PIZERO;
+    else if (interactionTypeString == "NCDIS_P_P_P_PIZERO") return NCDIS_P_P_P_PIZERO;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_PIZERO") return NCDIS_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "NCDIS_P_P_P_P_P_PIZERO") return NCDIS_P_P_P_P_P_PIZERO;
+    else if (interactionTypeString == "CCCOH") return CCCOH;
+    else if (interactionTypeString == "NCCOH") return NCCOH;
+    else if (interactionTypeString == "COSMIC_RAY_MU") return COSMIC_RAY_MU;
+    else if (interactionTypeString == "COSMIC_RAY_P") return COSMIC_RAY_P;
+    else if (interactionTypeString == "COSMIC_RAY_E") return COSMIC_RAY_E;
+    else if (interactionTypeString == "COSMIC_RAY_PHOTON") return COSMIC_RAY_PHOTON;
+    else if (interactionTypeString == "COSMIC_RAY_OTHER") return COSMIC_RAY_OTHER;
+    else if (interactionTypeString == "BEAM_PARTICLE_MU") return BEAM_PARTICLE_MU;
+    else if (interactionTypeString == "BEAM_PARTICLE_P") return BEAM_PARTICLE_P;
+    else if (interactionTypeString == "BEAM_PARTICLE_E") return BEAM_PARTICLE_E;
+    else if (interactionTypeString == "BEAM_PARTICLE_PHOTON") return BEAM_PARTICLE_PHOTON;
+    else if (interactionTypeString == "BEAM_PARTICLE_PI_PLUS") return BEAM_PARTICLE_PI_PLUS;
+    else if (interactionTypeString == "BEAM_PARTICLE_PI_MINUS") return BEAM_PARTICLE_PI_MINUS;
+    else if (interactionTypeString == "BEAM_PARTICLE_KAON_PLUS") return BEAM_PARTICLE_KAON_PLUS;
+    else if (interactionTypeString == "BEAM_PARTICLE_KAON_MINUS") return BEAM_PARTICLE_KAON_MINUS;
+    else if (interactionTypeString == "BEAM_PARTICLE_OTHER") return BEAM_PARTICLE_OTHER;
+    else if (interactionTypeString == "OTHER_INTERACTION") return OTHER_INTERACTION;
+    else if (interactionTypeString == "ALL_INTERACTIONS") return ALL_INTERACTIONS;
+    else if (interactionTypeString == "CCMEC_MU") return CCMEC_MU;
+    else if (interactionTypeString == "CCMEC_MU_P") return CCMEC_MU_P;
+    else if (interactionTypeString == "CCMEC_MU_P_P") return CCMEC_MU_P_P;
+    else if (interactionTypeString == "CCMEC_MU_P_P_P") return CCMEC_MU_P_P_P;
+    else if (interactionTypeString == "CCMEC_MU_P_P_P_P") return CCMEC_MU_P_P_P_P;
+    else if (interactionTypeString == "CCMEC_MU_P_P_P_P_P") return CCMEC_MU_P_P_P_P_P;
+    else if (interactionTypeString == "NCMEC_MU") return NCMEC_MU;
+    else if (interactionTypeString == "NCMEC_MU_P") return NCMEC_MU_P;
+    else if (interactionTypeString == "NCMEC_MU_P_P") return NCMEC_MU_P_P;
+    else if (interactionTypeString == "NCMEC_MU_P_P_P") return NCMEC_MU_P_P_P;
+    else if (interactionTypeString == "NCMEC_MU_P_P_P_P") return NCMEC_MU_P_P_P_P;
+    else if (interactionTypeString == "NCMEC_MU_P_P_P_P_P") return NCMEC_MU_P_P_P_P_P;
+    return OTHER_INTERACTION;
 }
 
 } // namespace lar_content
