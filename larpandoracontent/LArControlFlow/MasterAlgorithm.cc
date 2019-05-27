@@ -56,6 +56,7 @@ MasterAlgorithm::MasterAlgorithm() :
     m_passMCParticlesToWorkerInstances(true),
     m_filePathEnvironmentVariable("FW_SEARCH_PATH"),
     m_inTimeMaxX0(1.f),
+    m_countTotalSignal(false),
     m_writeToTree(false)
 {
 }
@@ -72,6 +73,9 @@ MasterAlgorithm::~MasterAlgorithm()
         try  
         {    
             PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "TopFaceCosmicRemoval", m_fileName.c_str(), "UPDATE"));
+
+            if (m_countTotalSignal)
+                PANDORA_MONITORING_API(SaveTree(this->GetPandora(), "EventSelectionTotalSignalCount", m_fileName.c_str(), "UPDATE"));
         }    
         catch (const StatusCodeException &)
         {    
@@ -206,12 +210,64 @@ StatusCode MasterAlgorithm::Initialize()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+void MasterAlgorithm::EventSelectionTotalSignalCount() const
+{
+    const MCParticleList *pMCParticleList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputMCParticleListName, pMCParticleList));
+
+    const CaloHitList *pCaloHitList(nullptr);
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputHitListName, pCaloHitList));
+
+    LArMCParticleHelper::PrimaryParameters parameters;
+    LArMCParticleHelper::MCContributionMap nuMCParticlesToGoodHitsMap;
+    LArMCParticleHelper::SelectReconstructableMCParticles(pMCParticleList, pCaloHitList, parameters, LArMCParticleHelper::IsBeamNeutrinoFinalState, nuMCParticlesToGoodHitsMap);
+
+    int nMuons(0), nProtons(0), nNeutrons(0), nPhotons(0), nPiPlus(0), nPiMinus(0), nPiZero(0), nElectrons(0), nOther(0); 
+    int nPrimaries(0);
+
+    //iterate over reconstructable primaries
+    for (const MCParticle *const pMCPrimary : *pMCParticleList)
+    {    
+        const bool isTargetPrimary(nuMCParticlesToGoodHitsMap.find(pMCPrimary) != nuMCParticlesToGoodHitsMap.end() ? true : false); //is reconstructable
+
+        if (!isTargetPrimary)
+            continue;
+
+        int mcParticlePdg(pMCPrimary->GetParticleId());
+
+        if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary) && isTargetPrimary)
+        {    
+            ++nPrimaries;
+            if (std::abs(mcParticlePdg) == 13) ++nMuons;
+            else if (std::abs(mcParticlePdg) == 2212) ++nProtons;
+            else if (std::abs(mcParticlePdg) == 11) ++nElectrons;
+            else if (mcParticlePdg == 2112) ++nNeutrons;
+            else if (mcParticlePdg == 22) ++nPhotons;
+            else if (mcParticlePdg == 211) ++nPiPlus;
+            else if (mcParticlePdg == -211) ++nPiMinus;
+            else if (mcParticlePdg == 111) ++nPiZero;
+            else ++nOther;
+        }    
+    }
+
+    int signal(((nPrimaries == 1 && nMuons == 1) || (nPrimaries == 2 && nMuons == 1 && nProtons == 1)) ? 1 : 0); 
+
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelectionTotalSignalCount", "Signal", signal));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelectionTotalSignalCount", "FileIdentifier", m_fileIdentifier));
+    PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelectionTotalSignalCount", "EventNumber", m_eventNumber));
+    PANDORA_MONITORING_API(FillTree(this->GetPandora(), "EventSelectionTotalSignalCount"));
+}
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 StatusCode MasterAlgorithm::Run()
 {
     ++m_eventNumber;
 
     if (m_passMCParticlesToWorkerInstances)
         PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->CopyMCParticles());
+
+    if (m_countTotalSignal)
+        this->EventSelectionTotalSignalCount();
 
     PfoToFloatMap stitchedPfosToX0Map;
     VolumeIdToHitListMap volumeIdToHitListMap;
@@ -389,50 +445,51 @@ StatusCode MasterAlgorithm::TagCosmicRayPfos(const PfoToFloatMap &stitchedPfosTo
     {
         if (!pPfo->GetParentPfoList().empty())
             continue;
+
+        bool criteriaMet(true);
         
-        try
+        if (m_recoTopFaceCosmicRemoval)
         {
-            //For additional direction-based CR tagging
-            //////////////////////////////////////////////
-            std::vector<pandora::CartesianVector> lowHighYPositions(LArDirectionHelper::GetLowHighYPoints(this->GetPandora(), pPfo));
-            pandora::CartesianVector correctedPfoLowYVector(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(lowHighYPositions.at(0)));
-            pandora::CartesianVector correctedPfoHighYVector(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(lowHighYPositions.at(1)));
-
-            CartesianVector yAxis(0.f, 1.f, 0.f);
-            float pfoPolarAngle = LArDirectionHelper::GetAngleWithVector(this->GetPandora(), pPfo, yAxis);
-
-            TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetPfoDirection(pPfo);
-            float deltaChiSquaredUpDownPerHit = directionFit.GetUpDownDeltaChiSquaredPerHit();
-
-            pandora::PfoList connectedPfoList, connectedPfosNearEndpoint, connectedPfosNotNearEndpoint;
-            LArPfoHelper::GetAllConnectedPfos(pPfo, connectedPfoList);
-
-            pandora::CartesianVector neutrinoMomentum(LArDirectionHelper::GetApproximateNeutrinoMomentum(this->GetPandora(), connectedPfoList, pPfo));
-            float pfoCharge(LArDirectionHelper::GetPfoCharge(pPfo));
-
-            for (const auto pConnectedPfo : connectedPfoList)
+            try
             {
-                const pandora::CartesianVector pfoVertexPosition(LArPfoHelper::GetVertex(pConnectedPfo)->GetPosition());
+                //For additional direction-based CR tagging
+                std::vector<pandora::CartesianVector> lowHighYPositions(LArDirectionHelper::GetLowHighYPoints(this->GetPandora(), pPfo));
+                pandora::CartesianVector correctedPfoLowYVector(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(lowHighYPositions.at(0)));
+                pandora::CartesianVector correctedPfoHighYVector(LArSpaceChargeHelper::GetSpaceChargeCorrectedPosition(lowHighYPositions.at(1)));
 
-                if ((pfoVertexPosition - correctedPfoLowYVector).GetMagnitude() <= 5.0 || (pfoVertexPosition - correctedPfoHighYVector).GetMagnitude() <= 5.0)
-                    connectedPfosNearEndpoint.push_back(pConnectedPfo);
+                CartesianVector yAxis(0.f, 1.f, 0.f);
+                float pfoPolarAngle = LArDirectionHelper::GetAngleWithVector(this->GetPandora(), pPfo, yAxis);
+
+                TrackDirectionTool::DirectionFitObject directionFit = m_pTrackDirectionTool->GetPfoDirection(pPfo);
+                float deltaChiSquaredUpDownPerHit = directionFit.GetUpDownDeltaChiSquaredPerHit();
+
+                pandora::PfoList connectedPfoList, connectedPfosNearEndpoint, connectedPfosNotNearEndpoint;
+                LArPfoHelper::GetAllConnectedPfos(pPfo, connectedPfoList);
+
+                pandora::CartesianVector neutrinoMomentum(LArDirectionHelper::GetApproximateNeutrinoMomentum(this->GetPandora(), connectedPfoList, pPfo));
+                float pfoCharge(LArDirectionHelper::GetPfoCharge(pPfo));
+
+                for (const auto pConnectedPfo : connectedPfoList)
+                {
+                    const pandora::CartesianVector pfoVertexPosition(LArPfoHelper::GetVertex(pConnectedPfo)->GetPosition());
+
+                    if ((pfoVertexPosition - correctedPfoLowYVector).GetMagnitude() <= 5.0 || (pfoVertexPosition - correctedPfoHighYVector).GetMagnitude() <= 5.0)
+                        connectedPfosNearEndpoint.push_back(pConnectedPfo);
+                }
+
+                criteriaMet = (deltaChiSquaredUpDownPerHit <= m_deltaChiSquaredCut && correctedPfoHighYVector.GetY() > 100 && pfoPolarAngle < 1.15395 && pfoCharge > 31500 && std::abs(neutrinoMomentum.GetZ()) < 0.785 && static_cast<int>(connectedPfosNearEndpoint.size()) < 3);
             }
-
-            const bool criteriaMet(deltaChiSquaredUpDownPerHit <= m_deltaChiSquaredCut && correctedPfoHighYVector.GetY() > 100 && pfoPolarAngle < 1.15395 && pfoCharge > 31500 && std::abs(neutrinoMomentum.GetZ()) < 0.785 && static_cast<int>(connectedPfosNearEndpoint.size()) < 3);
-            //////////////////////////////////////////////
-
-            PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
-            const float x0Shift((pfoToX0Iter != stitchedPfosToX0Map.end()) ? pfoToX0Iter->second : 0.f);
-            PfoList &targetList(((std::fabs(x0Shift) > m_inTimeMaxX0) || (m_recoTopFaceCosmicRemoval && criteriaMet)) ? clearCosmicRayPfos : nonStitchedParentCosmicRayPfos);
-            targetList.push_back(pPfo);
+            catch (...)
+            {
+                std::cout << "Direction fit in Master algorithm failed." << std::endl;
+            }
         }
-        catch (...) 
-        {
-            PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
-            const float x0Shift((pfoToX0Iter != stitchedPfosToX0Map.end()) ? pfoToX0Iter->second : 0.f);
-            PfoList &targetList((std::fabs(x0Shift) > m_inTimeMaxX0) ? clearCosmicRayPfos : nonStitchedParentCosmicRayPfos);
-            targetList.push_back(pPfo);
-        }
+
+        PfoToFloatMap::const_iterator pfoToX0Iter = stitchedPfosToX0Map.find(pPfo);
+        const float x0Shift((pfoToX0Iter != stitchedPfosToX0Map.end()) ? pfoToX0Iter->second : 0.f);
+        PfoList &targetList(((std::fabs(x0Shift) > m_inTimeMaxX0) || (m_recoTopFaceCosmicRemoval && criteriaMet)) ? clearCosmicRayPfos : nonStitchedParentCosmicRayPfos);
+        //PfoList &targetList((std::fabs(x0Shift) > m_inTimeMaxX0) ? clearCosmicRayPfos : nonStitchedParentCosmicRayPfos);
+        targetList.push_back(pPfo);
     }
 
     for (CosmicRayTaggingBaseTool *const pCosmicRayTaggingTool : m_cosmicRayTaggingToolVector)
@@ -1417,6 +1474,9 @@ StatusCode MasterAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
     "DeltaChiSquaredCut", m_deltaChiSquaredCut));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+    "CountTotalSignal", m_countTotalSignal));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
     "WriteToTree", m_writeToTree));

@@ -202,7 +202,11 @@ public:
         NCMEC_MU_P_P,
         NCMEC_MU_P_P_P,
         NCMEC_MU_P_P_P_P,
-        NCMEC_MU_P_P_P_P_P
+        NCMEC_MU_P_P_P_P_P,
+        CCMEC_P,
+        NCMEC_P,
+        NCRES_MU,
+        NCRES_MU_P
     };
 
     /**

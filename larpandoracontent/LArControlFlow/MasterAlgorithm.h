@@ -106,6 +106,8 @@ private:
      */
     pandora::StatusCode CopyMCParticles() const;
 
+    void EventSelectionTotalSignalCount() const;
+
     /**
      *  @brief  Get the mapping from lar tpc volume id to lists of all hits, and truncated hits
      *
@@ -347,6 +349,7 @@ private:
     int                         m_eventNumber;                  ///< The event number
 
     TrackDirectionTool          *m_pTrackDirectionTool;
+    bool                        m_countTotalSignal;
     bool                        m_writeToTree;
 };
 

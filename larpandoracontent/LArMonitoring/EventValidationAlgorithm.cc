@@ -257,15 +257,15 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
     //no interaction
     if (nAllNeutrinoPrimaries == 0 && nNeutrinoPrimaries == 0) 
     {
-        interactionTypeCopy = 179;
-        modifiedInteractionTypeCopy = 179;
+        interactionTypeCopy = 183;
+        modifiedInteractionTypeCopy = 183;
     }
 
     //no reconstructable
     if (nAllNeutrinoPrimaries != 0 && nNeutrinoPrimaries == 0) 
     {
-        interactionTypeCopy = 178;
-        modifiedInteractionTypeCopy = 178;
+        interactionTypeCopy = 182;
+        modifiedInteractionTypeCopy = 182;
     }
 
     int nRecoNuSplits(-1);
@@ -285,6 +285,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
         //NEW CODE
         int mcParticlePdg(pMCPrimary->GetParticleId());
 
+        //reconstructable, neutrino-induced
         if (LArMCParticleHelper::IsBeamNeutrinoFinalState(pMCPrimary) && isTargetPrimary)
         {
             ++nPrimaries;
@@ -548,7 +549,6 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
             const LArInteractionTypeHelper::InteractionType interactionType(LArInteractionTypeHelper::GetInteractionType(associatedMCPrimaries));
 #ifdef MONITORING
             const int interactionTypeInt(static_cast<int>(interactionType));
-
             globalInteractionTypeInt = interactionTypeInt;
 
             //NEW CODE
@@ -556,7 +556,9 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
             {
                 //set to COSMIC_RAY if nRecoNuCosmicRays == nRecoNuParticleMatches, this will never be called if NO_RECONSTRUCTABLE because the outer loop is over reconstructable primaries
                 if (nRecoNuCosmicRays == nRecoNuParticleMatches && !(nAllNeutrinoPrimaries != 0 && nNeutrinoPrimaries == 0))
-                    modifiedInteractionTypeCopy = 177; //custom CR interaction type
+                    modifiedInteractionTypeCopy = 181; //custom CR interaction type
+                else
+                    modifiedInteractionTypeCopy = interactionTypeInt;
 
                 interactionTypeCopy = interactionTypeInt;
             }
@@ -730,7 +732,10 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
 
         this->WriteVariables(pPfoListDuplicate);
 
-        int signal(((nPrimaries == 1 && nMuons == 1 && nRecoNuParticleMatches == 1 && nRecoNuCosmicRays == 0) || (nPrimaries == 2 && nMuons == 1 && nProtons == 1 && nRecoNuParticleMatches == 2 && nRecoNuCosmicRays == 0 && nMuonParticleMatches == 1 && nProtonParticleMatches == 1)) ? 1 : 0);
+        //int signal(((nPrimaries == 1 && nMuons == 1 && nRecoNuParticleMatches == 1 && nRecoNuCosmicRays == 0) || (nPrimaries == 2 && nMuons == 1 && nProtons == 1 && nRecoNuParticleMatches == 2 && nRecoNuCosmicRays == 0 && nMuonParticleMatches == 1 && nProtonParticleMatches == 1)) ? 1 : 0);
+
+        int signal(((nPrimaries == 1 && nMuons == 1) || (nPrimaries == 2 && nMuons == 1 && nProtons == 1)) ? 1 : 0);
+        int correctSignal(((nPrimaries == 1 && nMuons == 1 && nRecoNuParticleMatches == 1 && nRecoNuCosmicRays == 0 && nMuonParticleMatches == 1) || (nPrimaries == 2 && nMuons == 1 && nProtons == 1 && nRecoNuParticleMatches == 2 && nRecoNuCosmicRays == 0 && nMuonParticleMatches == 1 && nProtonParticleMatches == 1)) ? 1 : 0);
     
         bool onlyCorrectMatches(true);
 
@@ -747,6 +752,17 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
         int correctlyReconstructed(((nRecoNuCosmicRays == 0 && nPrimaries == 1 && nRecoNuParticleMatches == 1) || (nRecoNuCosmicRays == 0 && nPrimaries == 2 && nRecoNuParticleMatches == 2 && onlyCorrectMatches)) ? 1 : 0);
 
         std::cout << "correctlyReconstructed: " << correctlyReconstructed << std::endl;
+
+        float trueNeutrinoEnergy(-1.f);
+
+        for (const auto pMCParticle : *pMCParticleListDuplicate)
+        {
+            if (LArMCParticleHelper::IsNeutrino(pMCParticle))
+            {
+                trueNeutrinoEnergy = pMCParticle->GetEnergy();
+                break;
+            }
+        }
     
         PfoList neutrinoPfos;
         LArPfoHelper::GetRecoNeutrinos(pPfoListDuplicate, neutrinoPfos);
@@ -764,6 +780,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
 
         if (!m_data)
         {
+            PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueNeutrinoEnergy", trueNeutrinoEnergy));
             PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NeutrinoNuanceCode", nuanceCodeCopy));
             PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueNeutrinoNumberAssociatedParticles", nNuParticleMatches));
             PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "TrueNeutrinoNumberAssociatedTracks", nNuTrackMatches));
@@ -801,6 +818,7 @@ void EventValidationAlgorithm::ProcessOutput(const ValidationInfo &validationInf
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "RecoNeutrinoMultiplicity", recoNeutrinoMultiplicity));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "NumberRecoNeutrinos", static_cast<int>(neutrinoPfos.size())));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "Signal", signal));
+        PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "CorrectSignal", correctSignal));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "CorrectlyReconstructed", correctlyReconstructed));
         PANDORA_MONITORING_API(SetTreeVariable(this->GetPandora(), "EventSelection", "Data", m_data ? 1 : 0));
 

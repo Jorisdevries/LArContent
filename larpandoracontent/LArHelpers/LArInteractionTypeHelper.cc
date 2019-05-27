@@ -501,6 +501,10 @@ std::string LArInteractionTypeHelper::ToString(const InteractionType interaction
     case NCMEC_MU_P_P_P: return "NCMEC_MU_P_P_P";
     case NCMEC_MU_P_P_P_P: return "NCMEC_MU_P_P_P_P";
     case NCMEC_MU_P_P_P_P_P: return "NCMEC_MU_P_P_P_P_P";
+    case CCMEC_P: return "CCMEC_P";
+    case NCMEC_P: return "NCMEC_P";
+    case NCRES_MU: return "NCRES_MU";
+    case NCRES_MU_P: return "NCRES_MU_P";
     default: return "UNKNOWN";
     }
 }
@@ -686,6 +690,10 @@ LArInteractionTypeHelper::InteractionType LArInteractionTypeHelper::FromString(s
     else if (interactionTypeString == "NCMEC_MU_P_P_P") return NCMEC_MU_P_P_P;
     else if (interactionTypeString == "NCMEC_MU_P_P_P_P") return NCMEC_MU_P_P_P_P;
     else if (interactionTypeString == "NCMEC_MU_P_P_P_P_P") return NCMEC_MU_P_P_P_P_P;
+    else if (interactionTypeString =="CCMEC_P") return CCMEC_P;
+    else if (interactionTypeString =="NCMEC_P") return NCMEC_P;
+    else if (interactionTypeString =="NCRES_MU") return NCRES_MU;
+    else if (interactionTypeString =="NCRES_MU_P") return NCRES_MU_P;
     return OTHER_INTERACTION;
 }
 
