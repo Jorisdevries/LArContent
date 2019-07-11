@@ -38,7 +38,7 @@ DirectionFittingThreeDTool::DirectionFittingThreeDTool() :
     m_endpointRange(10.f),
     m_slidingFitWindow(5),
     m_minClusterCaloHits(5),
-    m_minClusterLength(5.f),
+    m_minClusterLength(1.f),
     m_tableInitialEnergy(250.f),
     m_tableStepSize(0.01f)
 {
@@ -58,7 +58,7 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
     {
         globalLookupTable3D.SetInitialEnergy(m_tableInitialEnergy);
         globalLookupTable3D.SetBinWidth(m_tableStepSize);
-        FillLookupTable3D(globalLookupTable3D, 105.7, 0.0);
+        FillLookupTable3D(globalLookupTable3D, 938.0, 0.0);
         globalEndpointRange = m_endpointRange;
 
         HitObjectVector hitObjectVector, filteredHitObjectVector, endpointHitObjectVector;
@@ -67,7 +67,7 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
 
         if (hitObjectVector.size() <= m_minClusterCaloHits || std::abs(hitObjectVector.back().GetLongitudinalPosition() - hitObjectVector.front().GetLongitudinalPosition()) < m_minClusterLength)
         {
-            std::cout << "Not enough hits or PFO too short." << std::endl;
+            std::cout << "Not enough hits or PFO too short. Number of hits: " << hitObjectVector.size() << std::endl;
             throw STATUS_CODE_NOT_FOUND;
         }
 
@@ -93,7 +93,7 @@ DirectionFittingThreeDTool::DirectionFitObject DirectionFittingThreeDTool::GetPf
 
     catch (StatusCodeException &statusCodeException)
     {
-        //std::cout << "Failure." << std::endl;
+        std::cout << "3D Fit Failure in tool." << std::endl;
         throw statusCodeException;
     }
 }
@@ -112,20 +112,45 @@ void DirectionFittingThreeDTool::FillHitObjectVector(const pandora::ParticleFlow
     CaloHitList caloHitList;
     orderedCaloHitList.FillCaloHitList(caloHitList);
 
-    const float wirePitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
-    const ThreeDSlidingFitResult slidingFit(clusterList.front(), m_slidingFitWindow, wirePitch);
+    int numberWHits(0);
 
     for (const auto pCaloHit : caloHitList)
     {   
         if (!(static_cast<const CaloHit*>(pCaloHit->GetParentAddress())->GetHitType() == TPC_VIEW_W))
             continue;
 
+        ++numberWHits;
+    }
+
+    const float wirePitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
+    int slidingFitWindowToUse(m_slidingFitWindow);
+
+    for (int i = 1; i <= 10; ++i)
+    {
+        try 
+        {
+            const ThreeDSlidingFitResult testSlidingFit(clusterList.front(), slidingFitWindowToUse, wirePitch);
+        }
+        catch (...)
+        {
+            std::cout << "Can't fit sliding fit, retrying" << std::endl;
+            slidingFitWindowToUse *= 2;
+            continue;
+        }
+
+        break; 
+    }
+
+    const ThreeDSlidingFitResult slidingFit(clusterList.front(), slidingFitWindowToUse, wirePitch);
+
+    for (const auto pCaloHit : caloHitList)
+    {   
+        if (numberWHits >= 5 && !(static_cast<const CaloHit*>(pCaloHit->GetParentAddress())->GetHitType() == TPC_VIEW_W))
+            continue;
+
         const CartesianVector caloHitPosition(pCaloHit->GetPositionVector());
         float caloHitEnergy(pCaloHit->GetInputEnergy());
         float hitWidth(pCaloHit->GetCellSize1());
-
-        if (!((hitWidth > 0.3 && hitWidth < 1.8) && (caloHitEnergy > 50.0 && caloHitEnergy < 600.0)))
-            continue;
 
         float rL(0.f);
         rL = slidingFit.GetLongitudinalDisplacement(caloHitPosition);
@@ -141,7 +166,12 @@ void DirectionFittingThreeDTool::FillHitObjectVector(const pandora::ParticleFlow
         float dEdx(this->CalculateModBoxdEdx(dQdx));
     
         if (dEdx < 0.f)
-            throw STATUS_CODE_NOT_FOUND; 
+        {
+            std::cout << "ModBox failed." << std::endl;
+            dEdx = 2.1;
+            continue;
+            //throw STATUS_CODE_NOT_FOUND; 
+        }
 
         HitObject hitObject(pCaloHit, rL, caloHitEnergy, hitWidth, segmentLength, dQdx, dEdx);
         hitObjectVector.push_back(hitObject);
@@ -345,11 +375,11 @@ void DirectionFittingThreeDTool::PerformFits(HitObjectVector &hitObjectVector, f
     //Forwards Fit
 
     int nParameters = 2;
-    std::string parName[nParameters] = {"ENDENERGY", "MASS"};
-    double vstart[nParameters] = {1.0, 935.0};
+    std::string parName[nParameters] = {"ENDENERGY", "EXTRADOF"};
+    double vstart[nParameters] = {1.0, 1.0};
     double step[nParameters] = {0.001, 0.001};
-    double lowphysbound[nParameters] = {0.01, 930.0};
-    double highphysbound[nParameters] = {5.0, 940.0};
+    double lowphysbound[nParameters] = {0.01, 0.95};
+    double highphysbound[nParameters] = {5.0, 1.05};
 
     int ierflg(0);
 
@@ -391,11 +421,11 @@ void DirectionFittingThreeDTool::PerformFits(HitObjectVector &hitObjectVector, f
     //Backwards Fit
 
     int nParameters2 = 2;
-    std::string parName2[nParameters2] = {"ENDENERGY", "MASS"};
-    double vstart2[nParameters2] = {1.0, 935.0};
+    std::string parName2[nParameters2] = {"ENDENERGY", "EXTRADOF"};
+    double vstart2[nParameters2] = {1.0, 1.0};
     double step2[nParameters2] = {0.001, 0.001};
-    double lowphysbound2[nParameters2] = {0.01, 930.0};
-    double highphysbound2[nParameters2] = {5.0, 940.0};
+    double lowphysbound2[nParameters2] = {0.01, 0.95};
+    double highphysbound2[nParameters2] = {5.0, 1.05};
 
     int ierflg2(0);
 
@@ -464,9 +494,9 @@ void DirectionFittingThreeDTool::PerformFits(HitObjectVector &hitObjectVector, f
 void DirectionFittingThreeDTool::SetFinalFitValues(HitObjectVector &hitObjectVector, float &forwardsChiSquared, float &backwardsChiSquared, double (&fitParameters)[2], bool forwards)
 {
     double L_offset(fitParameters[0]);
-    double M = fitParameters[1];
+    double M = 938.0;
 
-    FillLookupTable3D(globalLookupTable3D, M, L_offset); 
+    FillLookupTable3D(globalLookupTable3D, 938.0, L_offset); 
 
     for (auto &hitObject : hitObjectVector)
     {
@@ -475,7 +505,7 @@ void DirectionFittingThreeDTool::SetFinalFitValues(HitObjectVector &hitObjectVec
             try
             {
                 int binNumber(std::floor(hitObject.GetLongitudinalPosition()/globalLookupTable3D.GetBinWidth()));
-                double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+                double fitdEdx(fitParameters[1] * BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
                 double hitUncertainty(1.0);
 
                 hitObject.SetForwardsFitdEdx(fitdEdx); 
@@ -491,7 +521,7 @@ void DirectionFittingThreeDTool::SetFinalFitValues(HitObjectVector &hitObjectVec
             try
             {
                 int binNumber(std::floor((globalTrackLength3D - hitObject.GetLongitudinalPosition())/globalLookupTable3D.GetBinWidth()));
-                double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+                double fitdEdx(fitParameters[1] * BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
                 double hitUncertainty(1.0);
 
                 hitObject.SetBackwardsFitdEdx(fitdEdx); 

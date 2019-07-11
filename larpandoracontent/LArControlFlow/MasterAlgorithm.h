@@ -349,7 +349,9 @@ private:
     int                         m_eventNumber;                  ///< The event number
 
     TrackDirectionTool          *m_pTrackDirectionTool;
+    bool                        m_writeCosmicInformation;
     bool                        m_countTotalSignal;
+    bool                        m_data;
     bool                        m_writeToTree;
 };
 

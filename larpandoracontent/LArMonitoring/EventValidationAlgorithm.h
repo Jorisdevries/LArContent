@@ -178,6 +178,8 @@ private:
      */
     void WriteInterpretedMatches(const ValidationInfo &validationInfo) const;
 
+    float CorrectHitCharge(float caloHitEnergy) const;
+
     /**
      *  @brief  Print matching information in a provided validation info object, and write information to tree if configured to do so
      *
@@ -361,6 +363,7 @@ private:
     bool                    m_viewEvent;                    ///< Whether to draw the W CaloHits, True Nu hits and Nu Reco hits
     bool                    m_eventSelection;
     bool                    m_writeNeutrinoIdCheck;
+    bool                    m_writeDirectionInformation;
     bool                    m_data;
     float                   m_gainFactor;
 

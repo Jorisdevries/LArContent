@@ -225,7 +225,7 @@ double GetBackwardsFitEnergy(lar_content::DirectionFittingThreeDTool::HitObject 
 void GetForwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_t )
 {
     double L_offset(par[0]);
-    double M = par[1];
+    double M = 938.0;
 
     FillLookupTable3D(globalLookupTable3D, M, L_offset);
 
@@ -237,7 +237,7 @@ void GetForwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, In
         {
             double hitdEdx(hitObject.GetdEdx());
             int binNumber(std::floor(hitObject.GetLongitudinalPosition()/globalLookupTable3D.GetBinWidth()));
-            double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+            double fitdEdx(par[1] * BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
 
             double hitUncertainty(1.0);
             chiSquared += ((hitdEdx - fitdEdx) * (hitdEdx - fitdEdx) )/(hitUncertainty * hitUncertainty);
@@ -256,7 +256,7 @@ void GetForwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, In
 void GetBackwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, Int_t)
 {
     double L_offset(par[0]);
-    double M = par[1];
+    double M = 938.0;
 
     FillLookupTable3D(globalLookupTable3D, M, L_offset);
 
@@ -268,7 +268,7 @@ void GetBackwardsChiSquared3D(Int_t &, Double_t *, Double_t &f, Double_t *par, I
         {
             double hitdEdx(hitObject.GetdEdx());
             int binNumber(std::floor((globalTrackLength3D - hitObject.GetLongitudinalPosition())/globalLookupTable3D.GetBinWidth()));
-            double fitdEdx(BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
+            double fitdEdx(par[1] * BetheBloch3D(globalLookupTable3D.GetMap().at(binNumber), M));
 
             double hitUncertainty(1.0);
             chiSquared += ((hitdEdx - fitdEdx) * (hitdEdx - fitdEdx) )/(hitUncertainty * hitUncertainty);

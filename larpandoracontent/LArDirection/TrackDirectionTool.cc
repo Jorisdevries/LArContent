@@ -40,8 +40,8 @@ namespace lar_content
 
 TrackDirectionTool::TrackDirectionTool() :
     m_slidingFitWindow(5),
-    m_minClusterCaloHits(25),
-    m_minClusterLength(5.f),
+    m_minClusterCaloHits(5),
+    m_minClusterLength(1.f),
     m_targetParticlePDG(13),
     m_numberTrackEndHits(100000),
     m_endpointProtectionFraction(0.05),
@@ -74,6 +74,8 @@ TrackDirectionTool::~TrackDirectionTool()
 
 TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetClusterDirection(const Cluster *const pTargetClusterW)
 {
+    std::cout << "Direction fit is called." << std::endl;
+
     try
     {
         if (pTargetClusterW->GetNCaloHits() < m_minClusterCaloHits || pTargetClusterW->GetOrderedCaloHitList().size() > 5000)
@@ -117,8 +119,29 @@ TrackDirectionTool::DirectionFitObject TrackDirectionTool::GetPfoDirection(const
     {
         const pandora::Vertex *const pVertex = LArPfoHelper::GetVertex(pPfo);
         const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
+
+        int slidingFitWindowToUse(m_slidingFitWindow);
+
+        std::cout << "USING ADAPTIVE TRACK STATE VECTOR FITTING" << std::endl;
+
+        for (int i = 1; i <= 10; ++i)
+        {
+            LArTrackStateVector trackStateVector;
+            LArPfoHelper::GetSlidingFitTrajectory(pPfo, pVertex, i * m_slidingFitWindow, slidingFitPitch, trackStateVector);
+
+            if (trackStateVector.size() != 0)
+            {
+                slidingFitWindowToUse = i * m_slidingFitWindow;
+                break;
+            }
+            else
+            {
+                continue;
+            }
+        }
+
         LArTrackStateVector trackStateVector;
-        LArPfoHelper::GetSlidingFitTrajectory(pPfo, pVertex, m_slidingFitWindow, slidingFitPitch, trackStateVector);
+        LArPfoHelper::GetSlidingFitTrajectory(pPfo, pVertex, slidingFitWindowToUse, slidingFitPitch, trackStateVector);
 
         if (trackStateVector.size() == 0)
             throw StatusCodeException(STATUS_CODE_NOT_FOUND);
@@ -2124,12 +2147,6 @@ void TrackDirectionTool::GetCalorimetricDirection(const Cluster* pTargetClusterW
     HitChargeVector hitChargeVector;
     this->FillHitChargeVector(pTargetClusterW, hitChargeVector);
 
-    if (hitChargeVector.size() < m_minClusterCaloHits)
-    {
-        //std::cout << "Direction fit error: invalid cluster" << std::endl;
-        throw STATUS_CODE_FAILURE;
-    }
-
     HitChargeVector filteredHitChargeVector;
     this->TrackInnerFilter(hitChargeVector, filteredHitChargeVector);
 
@@ -2377,13 +2394,19 @@ void TrackDirectionTool::AddToSlidingFitCache(const Cluster *const pCluster)
         return;
 
     const float slidingFitPitch(LArGeometryHelper::GetWireZPitch(this->GetPandora()));
-    const TwoDSlidingFitResult slidingFit(pCluster, m_slidingFitWindow, slidingFitPitch);
 
-    if (!m_slidingFitResultMap.insert(TwoDSlidingFitResultMap::value_type(pCluster, slidingFit)).second)
+    std::cout << "USING SLIDING FIT FALLBACK." << std::endl;
+
+    for (int i = 1; i <= 10; ++i)
     {
-        std::cout << "Sliding fit failure" << std::endl;
-        throw StatusCodeException(STATUS_CODE_FAILURE);
+        const TwoDSlidingFitResult slidingFit(pCluster, i*m_slidingFitWindow, slidingFitPitch);
+
+        if (m_slidingFitResultMap.insert(TwoDSlidingFitResultMap::value_type(pCluster, slidingFit)).second)
+            return;
     }
+
+    std::cout << "Sliding fit failure" << std::endl;
+    throw StatusCodeException(STATUS_CODE_FAILURE);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
